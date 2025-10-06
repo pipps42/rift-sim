@@ -1,0 +1,322 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// User & Authentication
+// ============================================================================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  displayName   String?
+  avatarUrl     String?
+
+  // Stats
+  gamesPlayed   Int      @default(0)
+  gamesWon      Int      @default(0)
+  rating        Int      @default(1200)
+
+  // Relations
+  decks         Deck[]
+  gamesAsPlayer1 Match[] @relation("Player1")
+  gamesAsPlayer2 Match[] @relation("Player2")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ============================================================================
+// Card System
+// ============================================================================
+
+model CardDefinition {
+  id            String   @id // e.g., "FIRE_WARRIOR_001"
+  name          String
+  cardType      CardType
+  rarity        Rarity
+
+  // Costs
+  energyCost    Int
+  powerCosts    Json     @default("[]") // PowerCost[]
+
+  // Content
+  description   String
+  flavorText    String?
+
+  // Stats (for units)
+  might         Int?
+  subtypes      Json     @default("[]") // UnitSubtype[]
+
+  // Metadata
+  domains       Json     @default("[]") // Domain[]
+  keywords      Json     @default("[]") // Keyword[]
+  tags          Json     @default("[]") // Tag[]
+
+  // Card Scripting System Integration
+  scriptPath    String?  // Path to TypeScript script file (e.g., "cards/FireWarrior.ts")
+  hasScript     Boolean  @default(false)
+
+  // Assets
+  imageUrl      String?
+  artist        String?
+  cardNumber    String?
+
+  // Set information
+  setCode       String?
+  setName       String?
+
+  // Deck building
+  isSignature   Boolean  @default(false)
+  isBasicRune   Boolean  @default(false)
+
+  // Relations
+  decksAsLegend       Deck[] @relation("DeckLegend")
+  decksAsChampion     Deck[] @relation("DeckChampion")
+  decksAsBattlefield Deck[] @relation("DeckBattlefield")
+  mainDeckCards       MainDeckCard[] @relation("MainDeckCards")
+  runeDeckCards       RuneDeckCard[] @relation("RuneDeckCards")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([cardType])
+  @@index([rarity])
+  @@index([setCode])
+  @@map("card_definitions")
+}
+
+enum CardType {
+  UNIT
+  CHAMPION
+  GEAR
+  SPELL
+  RUNE
+  LEGEND
+  BATTLEFIELD
+  SIGNATURE
+  TOKEN
+}
+
+enum Rarity {
+  COMMON
+  UNCOMMON
+  RARE
+  MYTHIC
+}
+
+// ============================================================================
+// Deck System
+// ============================================================================
+
+model Deck {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+
+  // Owner
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Single cards (1 copy each)
+  championLegendId  String
+  championLegend    CardDefinition @relation("DeckLegend", fields: [championLegendId], references: [id])
+
+  chosenChampionId  String
+  chosenChampion    CardDefinition @relation("DeckChampion", fields: [chosenChampionId], references: [id])
+
+  battlefieldId     String
+  battlefield       CardDefinition @relation("DeckBattlefield", fields: [battlefieldId], references: [id])
+
+  // Decks with quantities (relation to DeckCard)
+  mainDeck          MainDeckCard[]
+  runeDeck          RuneDeckCard[]
+
+  // Metadata
+  isValid           Boolean  @default(false)
+  totalCards        Int      @default(0)
+  format            String   @default("standard")
+
+  // Stats
+  playCount         Int      @default(0)
+  winCount          Int      @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@map("decks")
+}
+
+// Main Deck: units, champions, spells, gear, signature, tokens (NOT legend, rune, battlefield)
+model MainDeckCard {
+  id          String   @id @default(cuid())
+
+  deckId      String
+  deck        Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+
+  cardId      String
+  card        CardDefinition @relation("MainDeckCards", fields: [cardId], references: [id])
+
+  quantity    Int      @default(1)
+
+  @@unique([deckId, cardId])
+  @@index([deckId])
+  @@map("main_deck_cards")
+}
+
+// Rune Deck: ONLY runes
+model RuneDeckCard {
+  id          String   @id @default(cuid())
+
+  deckId      String
+  deck        Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+
+  cardId      String
+  card        CardDefinition @relation("RuneDeckCards", fields: [cardId], references: [id])
+
+  quantity    Int      @default(1)
+
+  @@unique([deckId, cardId])
+  @@index([deckId])
+  @@map("rune_deck_cards")
+}
+
+// ============================================================================
+// Match System
+// ============================================================================
+
+model Match {
+  id              String      @id @default(cuid())
+
+  // Players
+  player1Id       String
+  player1         User        @relation("Player1", fields: [player1Id], references: [id])
+  player1DeckId   String?
+
+  player2Id       String
+  player2         User        @relation("Player2", fields: [player2Id], references: [id])
+  player2DeckId   String?
+
+  // Game state
+  status          MatchStatus
+  winnerId        String?
+  winCondition    String?
+
+  // Game data
+  currentRound    Int         @default(1)
+  currentPhase    String?
+  gameState       Json?       // Full game state snapshot
+
+  // Match history (for replay)
+  events          MatchEvent[]
+
+  // Metadata
+  format          String      @default("standard")
+  isRanked        Boolean     @default(false)
+
+  // Timing
+  startedAt       DateTime?
+  endedAt         DateTime?
+  duration        Int?        // seconds
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([status])
+  @@index([createdAt])
+  @@map("matches")
+}
+
+enum MatchStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+model MatchEvent {
+  id          String   @id @default(cuid())
+
+  // Relations
+  matchId     String
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  // Event data
+  type        String   // EventType enum as string
+  round       Int
+  phase       String?
+  playerId    String?
+
+  // Event payload
+  data        Json     // Full event data for replay
+
+  // Sequencing
+  sequence    Int      // Order within match
+  timestamp   DateTime @default(now())
+
+  @@index([matchId, sequence])
+  @@index([matchId, type])
+  @@map("match_events")
+}
+
+// ============================================================================
+// Game Sessions (Redis alternative for dev)
+// ============================================================================
+
+model GameSession {
+  id            String      @id @default(cuid())
+
+  // Match reference
+  matchId       String      @unique
+
+  // Active state
+  state         Json        // Full game state (in-memory)
+  lastActivity  DateTime    @default(now())
+
+  // Session management
+  expiresAt     DateTime
+  isActive      Boolean     @default(true)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([expiresAt])
+  @@index([isActive])
+  @@map("game_sessions")
+}
+
+// ============================================================================
+// Collection & Inventory (Future)
+// ============================================================================
+
+model UserCollection {
+  id          String   @id @default(cuid())
+
+  userId      String
+  cardId      String
+
+  quantity    Int      @default(1)
+  foil        Boolean  @default(false)
+
+  acquiredAt  DateTime @default(now())
+
+  @@unique([userId, cardId, foil])
+  @@index([userId])
+  @@map("user_collections")
+}

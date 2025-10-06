@@ -1,0 +1,8 @@
+{
+  "outDir": "./dist",
+  "declarationDir": "./dist",
+  "resolveFullPaths": true,
+  "fileExtensions": {
+    "": ".js"
+  }
+}
