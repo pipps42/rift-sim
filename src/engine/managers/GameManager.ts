@@ -4,6 +4,8 @@ import { DeckValidator } from '../validators/DeckValidator';
 import { GameSetup } from '../setup/GameSetup';
 import { logger } from '@/utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { CardStorage } from '../storage/CardStorage';
+import { HistoryQueryAPI } from '../history/HistoryQueryAPI';
 
 /**
  * Central orchestrator for all Riftbound game operations
@@ -40,7 +42,10 @@ export class GameManager {
       }
     }
 
-    // Create game instance
+    // Initialize card storage system
+    const storage = new CardStorage();
+
+    // Create game instance (temporarily without historyQuery to avoid circular ref)
     const game: Game = {
       id: uuidv4(),
       players: [players[0]!, players[1]!],
@@ -51,9 +56,15 @@ export class GameManager {
       status: GameStatus.SETUP,
       battlefields: [],
       chain: [],
+      storage, // Card storage for sharing data between cards
+      history: [], // Game event history
+      historyQuery: null as any, // Will be set below
       createdAt: new Date(),
       updatedAt: new Date()
     };
+
+    // Initialize history query API (needs game reference)
+    game.historyQuery = new HistoryQueryAPI(game);
 
     // Store game
     this.games.set(game.id, game);

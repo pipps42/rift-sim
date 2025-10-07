@@ -1,4 +1,6 @@
 import { BaseEntity } from './common';
+import type { CardStorage } from '../engine/storage/CardStorage';
+import type { HistoryQueryAPI } from '../engine/history/HistoryQueryAPI';
 
 // ============================================================================
 // CORE GAME ENTITIES
@@ -29,6 +31,9 @@ export interface Game {
   chain: ChainItem[];
   combatState?: CombatState;
   showdownState?: ShowdownState;
+  storage: CardStorage; // Card storage system for sharing data between cards
+  history: GameEvent[]; // Game event history for replay/queries
+  historyQuery: HistoryQueryAPI; // Helper API for common history queries
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,6 +82,7 @@ export interface BaseCard {
   artist?: string;
   cardNumber?: string;
   tags: Tag[];
+  scriptPath?: string; // Optional path to script file (for V2 runtime)
 }
 
 export interface PowerCost {
@@ -648,7 +654,12 @@ export enum EventType {
   SPELL_CAST = 'spell_cast',
   UNIT_DIED = 'unit_died',
   RUNE_CHANNELED = 'rune_channeled',
-  BURN_OUT = 'burn_out'
+  BURN_OUT = 'burn_out',
+  // V2 Scripting System Events
+  RUNE_RECYCLE = 'rune_recycle',
+  UNIT_PLAYED = 'unit_played',
+  UNIT_DEATH = 'unit_death',
+  ATTACK = 'attack'
 }
 
 // ============================================================================
