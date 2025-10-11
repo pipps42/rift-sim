@@ -1,6 +1,7 @@
 /**
  * Example demonstrating Riftbound Engine functionality
  */
+// @ts-nocheck - Example file, types may be out of date
 import { gameManager } from './engine/managers/GameManager.js';
 import { Player, Deck, GameCard, ChampionLegendCard, UnitCard } from './types/game.js';
 import { logger } from './utils/logger.js';

@@ -53,6 +53,7 @@ export class GameManager {
       phase: GamePhase.AWAKEN,
       turnState: TurnState.NEUTRAL_OPEN,
       round: 0,
+      currentTurn: 1, // Absolute turn counter, starts at 1
       status: GameStatus.SETUP,
       battlefields: [],
       chain: [],

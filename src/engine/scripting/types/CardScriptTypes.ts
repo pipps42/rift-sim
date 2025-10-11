@@ -1,493 +1,517 @@
 /**
- * Card Scripting System - Type Definitions
+ * Card Script Types (V2 - Direct Execution Model)
  *
- * This module defines all interfaces and types for the card scripting system,
- * inspired by Legends of Runeterra's approach (Riot Games).
+ * Simplified type system for card scripts with direct access to game engine.
+ * Based on Legends of Runeterra approach: no sandboxing, no serialization.
  *
- * Cards are implemented as TypeScript scripts that define behavior through
- * declarative hooks and handlers, executed in a sandboxed environment.
+ * Key differences from V1:
+ * - CardContext has direct Game reference (not SafeGameState)
+ * - No BattlefieldAPI, ChainAPI wrappers - scripts access game.* directly
+ * - Scripts execute in main Node.js process (no isolated-vm)
  */
 
-import type { Card, Effect, Ability, Player, Game, GameCard } from '../../../types/game';
-import type { BaseEntity } from '../../../types/common';
+import type { Game, GameCard, Player, Card } from '../../../types/game';
 
 // ============================================================================
-// Core Script Interface
+// CARD CONTEXT
 // ============================================================================
 
 /**
- * Main interface that all card scripts must implement.
- * Each card file exports an object conforming to this interface.
- */
-export interface CardScript {
-  /** Unique card identifier (e.g., "CARD_001") */
-  id: string;
-
-  /** Card name */
-  name: string;
-
-  /** Card type */
-  type: 'unit' | 'spell' | 'artifact' | 'ritual';
-
-  /** Mana cost */
-  cost: number;
-
-  /** Card rarity */
-  rarity: 'common' | 'rare' | 'epic' | 'legendary';
-
-  /** Optional: Unit stats (for unit cards) */
-  stats?: {
-    attack: number;
-    health: number;
-  };
-
-  /** Optional: Card description/flavor text */
-  description?: string;
-
-  /** Optional: Keywords (e.g., ["flying", "rush", "taunt"]) */
-  keywords?: string[];
-
-  /** Optional: Tags for categorization (e.g., ["dragon", "spell-damage"]) */
-  tags?: string[];
-
-  // Lifecycle Hooks
-  /** Called when card is played/summoned */
-  onPlay?: PlayHandler;
-
-  /** Called when unit dies (units only) */
-  onDeath?: DeathHandler;
-
-  /** Called at start of turn (persistent effects) */
-  onTurnStart?: TurnHandler;
-
-  /** Called at end of turn (persistent effects) */
-  onTurnEnd?: TurnHandler;
-
-  /** Called when unit attacks (units only) */
-  onAttack?: AttackHandler;
-
-  /** Called when unit is attacked (units only) */
-  onDefend?: DefendHandler;
-
-  /** Called when unit deals damage */
-  onDamage?: DamageHandler;
-
-  /** Called when unit takes damage */
-  onDamaged?: DamageHandler;
-
-  // Trigger System
-  /** Custom event triggers */
-  triggers?: TriggerDefinition[];
-
-  // Effect System
-  /** Passive abilities (always active) */
-  passiveEffects?: PassiveEffect[];
-
-  /** Activated abilities (player-triggered) */
-  activatedAbilities?: ActivatedAbility[];
-
-  // Validation
-  /** Custom play validation (beyond standard rules) */
-  canPlay?: CanPlayHandler;
-
-  /** Custom target validation */
-  canTarget?: CanTargetHandler;
-}
-
-// ============================================================================
-// Handler Types
-// ============================================================================
-
-/** Handler for onPlay hook */
-export type PlayHandler = (context: CardContext) => void | Promise<void>;
-
-/** Handler for onDeath hook */
-export type DeathHandler = (context: CardContext) => void | Promise<void>;
-
-/** Handler for turn start/end hooks */
-export type TurnHandler = (context: CardContext) => void | Promise<void>;
-
-/** Handler for attack events */
-export type AttackHandler = (context: CardContext, defender: GameCard) => void | Promise<void>;
-
-/** Handler for defend events */
-export type DefendHandler = (context: CardContext, attacker: GameCard) => void | Promise<void>;
-
-/** Handler for damage events */
-export type DamageHandler = (
-  context: CardContext,
-  amount: number,
-  target: GameCard
-) => void | Promise<void>;
-
-/** Handler for play validation */
-export type CanPlayHandler = (context: CardContext) => boolean;
-
-/** Handler for target validation */
-export type CanTargetHandler = (context: CardContext, target: GameCard) => boolean;
-
-// ============================================================================
-// Context Interface
-// ============================================================================
-
-/**
- * Context object passed to all card script handlers.
- * Provides safe access to game state and action APIs.
+ * Context passed to every card script hook.
+ * Scripts have DIRECT access to game engine objects.
  */
 export interface CardContext {
-  /** The card being scripted */
-  self: Card;
+  /**
+   * The card executing this script.
+   */
+  self: GameCard;
 
-  /** Owner of the card */
+  /**
+   * Player who owns/controls this card.
+   */
   owner: Player;
 
-  /** Current game state (read-only) */
-  game: SafeGameState;
+  /**
+   * Opponent player (convenience property).
+   * In 1v1 games, this is always the other player.
+   * Automatically populated by CardScriptRuntime.
+   */
+  opponent: Player;
 
-  /** API for battlefield interactions */
-  battlefield: BattlefieldAPI;
+  /**
+   * Direct reference to game instance.
+   * Scripts can access game.battlefield, game.effects, etc. directly.
+   */
+  game: Game;
 
-  /** API for effect chain manipulation */
-  chain: ChainAPI;
-
-  /** API for random number generation */
-  random: RandomAPI;
-
-  /** API for logging and debugging */
-  log: LogAPI;
-
-  /** Targets selected for this action (if any) */
+  /**
+   * Selected targets (if any).
+   * Populated when card has targeted abilities.
+   */
   targets?: GameCard[];
 
-  /** Additional event-specific data */
-  eventData?: Record<string, any>;
-}
+  /**
+   * Event-specific data.
+   * Example: { amount: 5, source: cardInstanceId } for damage events
+   */
+  eventData?: EventData;
 
-// ============================================================================
-// Safe Game State (Read-Only)
-// ============================================================================
+  // ===== V3 GameAction System Integration =====
 
-/**
- * Read-only view of game state for scripts.
- * Prevents direct mutations, all changes go through APIs.
- */
-export interface SafeGameState {
-  readonly turn: number;
-  readonly phase: string;
-  readonly activePlayer: string; // player ID
-  readonly players: ReadonlyArray<SafePlayer>;
-  readonly battlefield: ReadonlyArray<SafeEntity>;
-}
+  /**
+   * V3 Actions API - Execute declarative game actions.
+   * All actions go through validation → modifiers → execution → history → triggers.
+   *
+   * Example:
+   * ```typescript
+   * await ctx.actions.exhaustCard(ctx.self);
+   * await ctx.actions.addEnergy(1);
+   * ```
+   */
+  actions: ActionsAPI;
 
-export interface SafePlayer {
-  readonly id: string;
-  readonly name: string;
-  readonly health: number;
-  readonly maxHealth: number;
-  readonly mana: number;
-  readonly maxMana: number;
-  readonly deckSize: number;
-  readonly handSize: number;
-  readonly graveyardSize: number;
-}
+  /**
+   * V3 Modifiers API - Register action modifiers.
+   * Modifiers intercept actions before execution to modify them.
+   *
+   * Example:
+   * ```typescript
+   * ctx.modifiers.onDamage({
+   *   modify: (amount) => amount + 1,  // +1 damage
+   *   filter: (target) => target.controllerId !== ctx.owner.id,
+   *   duration: 'turn'
+   * });
+   * ```
+   */
+  modifiers: ModifiersAPI;
 
-export interface SafeEntity {
-  readonly id: string;
-  readonly cardId: string;
-  readonly name: string;
-  readonly type: string;
-  readonly owner: string;
-  readonly attack: number;
-  readonly health: number;
-  readonly maxHealth: number;
-  readonly position: { row: number; col: number };
-  readonly status: ReadonlyArray<string>;
-  readonly keywords: ReadonlyArray<string>;
-  readonly canMove: boolean;
-  readonly canAttack: boolean;
-  readonly hasAttacked: boolean;
-}
-
-// ============================================================================
-// Battlefield API
-// ============================================================================
-
-/**
- * API for interacting with the battlefield.
- * All actions are queued and executed through the game engine.
- */
-export interface BattlefieldAPI {
-  /** Get entity by ID */
-  getEntity(entityId: string): SafeEntity | undefined;
-
-  /** Get all entities matching filter */
-  getEntities(filter?: EntityFilter): SafeEntity[];
-
-  /** Get entities in specific area */
-  getEntitiesInArea(area: Area): SafeEntity[];
-
-  /** Deal damage to target */
-  dealDamage(target: string | GameCard, amount: number, source?: string): void;
-
-  /** Heal target */
-  heal(target: string | GameCard, amount: number): void;
-
-  /** Destroy entity */
-  destroy(target: string | GameCard): void;
-
-  /** Move entity to position */
-  move(entity: string | GameCard, position: Position): void;
-
-  /** Add status effect to entity */
-  addStatus(target: string | GameCard, status: string, duration?: number): void;
-
-  /** Remove status effect from entity */
-  removeStatus(target: string | GameCard, status: string): void;
-
-  /** Modify entity stats */
-  modifyStats(target: string | GameCard, stats: StatModification): void;
-
-  /** Summon new entity */
-  summon(cardId: string, position: Position, owner: string): void;
-
-  /** Transform entity into another card */
-  transform(entity: string | GameCard, newCardId: string): void;
-}
-
-// ============================================================================
-// Chain API
-// ============================================================================
-
-/**
- * API for manipulating the effect chain.
- * Allows scripts to add effects, counter actions, etc.
- */
-export interface ChainAPI {
-  /** Add effect to chain */
-  addEffect(effect: Effect): void;
-
-  /** Counter/cancel last effect in chain */
-  counter(): void;
-
-  /** Get current chain length */
-  getChainLength(): number;
-
-  /** Check if chain is empty */
-  isEmpty(): boolean;
-}
-
-// ============================================================================
-// Random API
-// ============================================================================
-
-/**
- * API for deterministic random number generation.
- * Uses seeded RNG for replay consistency.
- */
-export interface RandomAPI {
-  /** Random integer in range [min, max) */
-  int(min: number, max: number): number;
-
-  /** Random float in range [0, 1) */
-  float(): number;
-
-  /** Pick random element from array */
-  pick<T>(array: T[]): T;
-
-  /** Shuffle array (returns new array) */
-  shuffle<T>(array: T[]): T[];
-
-  /** Random boolean with given probability (0-1) */
-  chance(probability: number): boolean;
-}
-
-// ============================================================================
-// Log API
-// ============================================================================
-
-/**
- * API for logging and debugging.
- */
-export interface LogAPI {
-  /** Log info message */
-  info(message: string, data?: any): void;
-
-  /** Log warning message */
-  warn(message: string, data?: any): void;
-
-  /** Log error message */
-  error(message: string, data?: any): void;
-
-  /** Log debug message (only in dev mode) */
-  debug(message: string, data?: any): void;
-}
-
-// ============================================================================
-// Trigger System
-// ============================================================================
-
-/**
- * Defines a custom event trigger for the card.
- */
-export interface TriggerDefinition {
-  /** Event to listen for */
-  event: TriggerEvent;
-
-  /** Optional condition to check before executing */
-  condition?: (context: CardContext) => boolean;
-
-  /** Handler to execute when triggered */
-  handler: (context: CardContext) => void | Promise<void>;
-
-  /** Optional: trigger only once */
-  once?: boolean;
-}
-
-export type TriggerEvent =
-  | 'UNIT_SUMMONED'
-  | 'UNIT_DIED'
-  | 'SPELL_CAST'
-  | 'DAMAGE_DEALT'
-  | 'DAMAGE_TAKEN'
-  | 'TURN_START'
-  | 'TURN_END'
-  | 'PHASE_CHANGE'
-  | 'CARD_DRAWN'
-  | 'CARD_DISCARDED'
-  | 'ATTACK_DECLARED'
-  | 'ENTITY_MOVED'
-  | string; // Allow custom events
-
-// ============================================================================
-// Effect System
-// ============================================================================
-
-/**
- * Passive effect definition (always active while card is in play).
- */
-export interface PassiveEffect {
-  /** Effect description */
-  description: string;
-
-  /** Affected targets */
-  targets: EntityFilter;
-
-  /** Stat modifications */
-  statMods?: StatModification;
-
-  /** Keywords to add */
-  addKeywords?: string[];
-
-  /** Custom effect handler */
-  apply?: (context: CardContext, target: GameCard) => void;
-
-  /** Optional condition for effect to be active */
-  condition?: (context: CardContext) => boolean;
+  /**
+   * V3 Triggers API - Register event triggers.
+   * Triggers fire when specific game events occur.
+   *
+   * Example:
+   * ```typescript
+   * ctx.triggers.onUnitEntered({
+   *   filter: (unit) => unit.domains?.includes('fury'),
+   *   effect: async (unit) => { await ctx.actions.draw(1); }
+   * });
+   * ```
+   */
+  triggers: TriggersAPI;
 }
 
 /**
- * Activated ability definition (player must activate manually).
+ * Event data passed to hooks.
  */
-export interface ActivatedAbility {
-  /** Ability name */
-  name: string;
-
-  /** Ability description */
-  description: string;
-
-  /** Mana cost (optional) */
-  cost?: number;
-
-  /** Cooldown in turns (optional) */
-  cooldown?: number;
-
-  /** Target requirements */
-  targetRequirement?: TargetRequirement;
-
-  /** Can use check */
-  canUse?: (context: CardContext) => boolean;
-
-  /** Effect handler */
-  effect: (context: CardContext) => void | Promise<void>;
+export interface EventData {
+  [key: string]: any;
+  amount?: number;
+  source?: string;
+  target?: string;
+  type?: string;
 }
 
 // ============================================================================
-// Helper Types
+// CARD SCRIPT DEFINITION
 // ============================================================================
 
-export interface EntityFilter {
-  type?: 'unit' | 'spell' | 'artifact' | 'ritual';
-  owner?: 'self' | 'opponent' | 'any';
+/**
+ * Card script interface.
+ * Each method is a hook that triggers on specific game events.
+ */
+export interface CardScript {
+  // -------------------------------------------------------------------------
+  // PLAY/CAST HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Triggered when this card is played from hand.
+   * For units: enters the battlefield
+   * For spells: cast effect resolves
+   */
+  onPlay?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card is cast (spells only).
+   * Called BEFORE spell goes on the chain.
+   */
+  onCast?: (ctx: CardContext) => Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // RUNE HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Triggered when a rune is tapped for energy (runes only).
+   * Basic rune ability: [T]: Add [1] energy
+   */
+  onTap?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when a rune is recycled for power (runes only).
+   * Basic rune ability: Recycle this - Add [Domain] power
+   */
+  onRecycle?: (ctx: CardContext) => Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // ZONE CHANGE HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Triggered when this card enters play (battlefield or board zone).
+   */
+  onEntersPlay?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card leaves play.
+   */
+  onLeavesPlay?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card is destroyed/dies.
+   */
+  onDeath?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card is discarded from hand.
+   */
+  onDiscard?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card is drawn.
+   */
+  onDraw?: (ctx: CardContext) => Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // TURN HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Triggered at the start of each turn (if card is in play).
+   */
+  onTurnStart?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered at the end of each turn (if card is in play).
+   */
+  onTurnEnd?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered at the start of owner's turn.
+   */
+  onYourTurnStart?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered at the end of owner's turn.
+   */
+  onYourTurnEnd?: (ctx: CardContext) => Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // COMBAT HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Triggered when this card attacks.
+   */
+  onAttack?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card defends/blocks.
+   */
+  onDefend?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card deals damage.
+   */
+  onDamage?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card takes damage.
+   */
+  onDamaged?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card strikes (deals combat damage).
+   */
+  onStrike?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when this card is struck (receives combat damage).
+   */
+  onStruck?: (ctx: CardContext) => Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // GAME EVENT HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Triggered when ANY spell is cast (global listener).
+   */
+  onSpellCast?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when ANY unit enters play (global listener).
+   */
+  onUnitEntersPlay?: (ctx: CardContext) => Promise<void>;
+
+  /**
+   * Triggered when ANY unit dies (global listener).
+   */
+  onUnitDies?: (ctx: CardContext) => Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // VALIDATION HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Custom validation for playing this card.
+   * Return false to prevent playing.
+   */
+  canPlay?: (ctx: CardContext) => Promise<boolean>;
+
+  /**
+   * Custom validation for targeting.
+   * Return false to mark target as invalid.
+   */
+  canTarget?: (ctx: CardContext, target: GameCard) => Promise<boolean>;
+
+  /**
+   * Custom validation for attacking.
+   * Return false to prevent attack.
+   */
+  canAttack?: (ctx: CardContext) => Promise<boolean>;
+
+  /**
+   * Custom validation for blocking.
+   * Return false to prevent block.
+   */
+  canBlock?: (ctx: CardContext, attacker: GameCard) => Promise<boolean>;
+
+  // -------------------------------------------------------------------------
+  // REPLACEMENT EFFECT HOOKS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Modify draw event before it occurs.
+   * Return modified event to change behavior.
+   */
+  onBeforeDraw?: (ctx: CardContext, event: DrawEvent) => Promise<DrawEvent>;
+
+  /**
+   * Modify damage event before it occurs.
+   * Return modified event to change damage amount, redirect, etc.
+   */
+  onBeforeDamage?: (ctx: CardContext, event: DamageEvent) => Promise<DamageEvent>;
+
+  /**
+   * Modify heal event before it occurs.
+   */
+  onBeforeHeal?: (ctx: CardContext, event: HealEvent) => Promise<HealEvent>;
+
+  // -------------------------------------------------------------------------
+  // STATIC PROPERTIES
+  // -------------------------------------------------------------------------
+
+  /**
+   * Override keywords from card definition.
+   * Useful for cards that grant keywords dynamically.
+   */
   keywords?: string[];
-  tags?: string[];
-  minAttack?: number;
-  maxAttack?: number;
-  minHealth?: number;
-  maxHealth?: number;
-  status?: string[];
-  custom?: (entity: SafeEntity) => boolean;
-}
 
-export interface Area {
-  type: 'circle' | 'rectangle' | 'line' | 'cross';
-  center: Position;
-  radius?: number; // for circle
-  width?: number; // for rectangle
-  height?: number; // for rectangle
-  direction?: 'north' | 'south' | 'east' | 'west'; // for line
-}
-
-export interface Position {
-  row: number;
-  col: number;
-}
-
-export interface StatModification {
-  attack?: number;
-  health?: number;
-  maxHealth?: number;
-}
-
-export interface TargetRequirement {
-  count: number;
-  filter: EntityFilter;
-  optional?: boolean;
+  /**
+   * Override might value (attack/power).
+   */
+  might?: number;
 }
 
 // ============================================================================
-// Script Loader Types
+// EVENT TYPES (for replacement effects)
+// ============================================================================
+
+export interface DrawEvent {
+  player: Player;
+  amount: number;
+  reason?: 'draw_phase' | 'effect' | 'mulligan';
+}
+
+export interface DamageEvent {
+  target: GameCard;
+  amount: number;
+  source?: GameCard;
+  type?: 'combat' | 'effect' | 'burn';
+}
+
+export interface HealEvent {
+  target: GameCard;
+  amount: number;
+  source?: GameCard;
+}
+
+// ============================================================================
+// LOADED SCRIPT
 // ============================================================================
 
 /**
- * Result of loading and compiling a card script.
+ * Metadata about a loaded script.
  */
 export interface LoadedScript {
+  /**
+   * Card ID this script belongs to.
+   */
+  cardId: string;
+
+  /**
+   * The script object.
+   */
   script: CardScript;
-  compiledCode: string;
+
+  /**
+   * Path to script file.
+   */
   filePath: string;
-  lastModified: number;
+
+  /**
+   * Timestamp when script was loaded.
+   */
+  loadedAt: Date;
+}
+
+// ============================================================================
+// V3 GAMEACTION SYSTEM APIs
+// ============================================================================
+
+/**
+ * V3 Actions API - Convenience methods for executing game actions.
+ * All actions use the V3 declarative pipeline with validation, modifiers, history, and triggers.
+ */
+export interface ActionsAPI {
+  /** Deal damage to target */
+  dealDamage(target: GameCard, amount: number, damageType?: 'combat' | 'effect'): Promise<void>;
+
+  /** Heal target */
+  heal(target: GameCard, amount: number): Promise<void>;
+
+  /** Draw cards from main deck */
+  draw(count: number): Promise<void>;
+
+  /** Add energy to rune pool */
+  addEnergy(amount: number): Promise<void>;
+
+  /** Add power to rune pool */
+  addPower(domain: string, amount: number): Promise<void>;
+
+  /** Move card between zones */
+  moveCard(card: GameCard, fromZone: string, toZone: string): Promise<void>;
+
+  /** Exhaust card (ready → exhausted) */
+  exhaustCard(card: GameCard): Promise<void>;
+
+  /** Ready card (exhausted → ready) */
+  readyCard(card: GameCard): Promise<void>;
+
+  /** Discard card from hand to trash */
+  discard(card: GameCard): Promise<void>;
+
+  /** Recycle card to bottom of deck */
+  recycle(card: GameCard, toDeck: 'mainDeck' | 'runeDeck'): Promise<void>;
+
+  /** Kill permanent (send to trash) */
+  kill(card: GameCard): Promise<void>;
+
+  /** Hide card facedown at battlefield */
+  hide(card: GameCard): Promise<void>;
+
+  // ===== NEW ACTIONS (Phase A additions) =====
+
+  /** Channel runes from Rune Deck to Base */
+  channelRunes(amount: number): Promise<void>;
+
+  /** Stun a unit for specified duration */
+  stun(target: GameCard, duration?: number): Promise<void>;
+
+  /** Banish card to Banishment zone */
+  banish(card: GameCard, fromZone: any, permanent?: boolean): Promise<void>;
+
+  /** Reveal card from private zone */
+  reveal(card: GameCard, fromZone: any, duration?: 'instant' | 'until_played' | 'permanent'): Promise<void>;
+
+  /** Counter a spell or ability on the Chain */
+  counterSpell(targetChainItemId: string, canCounterAbilities?: boolean): Promise<void>;
 }
 
 /**
- * Error during script loading/compilation.
+ * V3 Modifiers API - Register action modifiers that intercept actions.
  */
-export interface ScriptError {
-  cardId: string;
-  filePath: string;
-  error: Error;
-  timestamp: number;
+export interface ModifiersAPI {
+  /** Register a damage modifier */
+  onDamage(config: {
+    modify: (amount: number) => number;
+    filter?: (target: GameCard) => boolean;
+    duration?: 'turn' | 'permanent';
+    maxUses?: number;
+  }): void;
+
+  /** Register a cost modifier */
+  onCost(config: {
+    energyModification?: number;
+    powerModification?: number;
+    filter?: (card: GameCard) => boolean;
+    duration?: 'turn' | 'permanent';
+  }): void;
+
+  /** Register a keyword modifier */
+  onKeyword(config: {
+    operation: 'grant' | 'remove';
+    keyword: string;
+    filter?: (card: GameCard) => boolean;
+    duration?: 'turn' | 'permanent';
+  }): void;
+
+  /** Register a prevention modifier */
+  onPrevent(config: {
+    actionType: string;
+    filter?: (action: any) => boolean;
+    maxPrevents?: number;
+  }): void;
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
+/**
+ * V3 Triggers API - Register triggers that fire on game events.
+ */
+export interface TriggersAPI {
+  /** Register trigger for when units enter play */
+  onUnitEntered(config: {
+    filter?: (unit: GameCard) => boolean;
+    effect: (unit: GameCard) => Promise<void> | void;
+    maxTriggers?: number;
+  }): void;
 
-export type {
-  Card,
-  GameCard,
-  Game,
-  Effect,
-  Ability,
-  Player,
-  BaseEntity,
-};
+  /** Register trigger for when player scores */
+  onScoring(config: {
+    filter?: (playerId: string, method: 'hold' | 'conquer') => boolean;
+    effect: (playerId: string, battlefield: any) => Promise<void> | void;
+    maxTriggers?: number;
+  }): void;
+
+  /** Register trigger for phase changes */
+  onPhase(config: {
+    phase: 'AWAKEN' | 'BEGINNING' | 'CHANNEL' | 'DRAW' | 'ACTION' | 'ENDING' | 'EXPIRATION' | 'CLEANUP';
+    timing: 'start' | 'end';
+    effect: () => Promise<void> | void;
+    maxTriggers?: number;
+  }): void;
+
+  /** Register trigger for when damage is dealt */
+  onDamageDealt(config: {
+    filter?: (target: GameCard, amount: number) => boolean;
+    effect: (target: GameCard, amount: number) => Promise<void> | void;
+    maxTriggers?: number;
+  }): void;
+
+  /** Register trigger for when units die */
+  onUnitDeath(config: {
+    filter?: (unit: GameCard) => boolean;
+    effect: (unit: GameCard) => Promise<void> | void;
+    maxTriggers?: number;
+  }): void;
+}

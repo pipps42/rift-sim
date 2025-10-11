@@ -1,72 +1,74 @@
 /**
- * Card Script Runtime
+ * Card Script Runtime (V2 - Direct Execution Model)
  *
- * Orchestrates the execution of card scripts by integrating:
- * - CardScriptLoader (loading scripts)
- * - CardScriptSandbox (isolated execution)
- * - API implementations (BattlefieldAPI, ChainAPI, etc.)
+ * Orchestrates card script execution with direct access to game engine.
+ * No sandboxing, no serialization - scripts run in main Node.js process.
  *
- * Provides a high-level interface for the game engine to trigger card hooks.
+ * Key differences from V1:
+ * - No SandboxPool - scripts execute directly
+ * - No API bridge - context contains direct Game reference
+ * - Simpler error handling (no isolate timeout errors)
+ *
+ * - ~200 lines instead of 600+
  */
 
 import { CardScriptLoader } from './CardScriptLoader';
-import { CardScriptSandbox, SandboxPool } from './CardScriptSandbox';
+import { createGameCard } from '@/utils/cardHelpers';
 import type {
   CardScript,
   CardContext,
-  BattlefieldAPI,
-  ChainAPI,
-  RandomAPI,
-  LogAPI,
-  SafeGameState,
+  EventData,
 } from './types/CardScriptTypes';
-import type { Card, Player, Game, GameCard } from '../../types/game';
+import type { Card, Game, GameCard, Player } from '../../types/game';
+import { ActionExecutor } from '../actions/ActionExecutor';
+import { ModifierRegistry } from '../actions/ModifierRegistry';
+import { TriggerRegistry } from '../actions/TriggerRegistry';
+import { createV3APIs } from './V3ScriptAPI';
 
 // ============================================================================
-// Configuration
+// CONFIGURATION
 // ============================================================================
 
 export interface RuntimeConfig {
-  /** Directory containing card scripts */
+  /**
+   * Directory containing card scripts.
+   */
   scriptsDir: string;
 
-  /** Enable hot-reload */
+  /**
+   * Enable hot-reload.
+   */
   hotReload: boolean;
 
-  /** Sandbox pool size */
-  sandboxPoolSize: number;
-
-  /** Sandbox timeout in ms */
-  sandboxTimeout: number;
-
-  /** Sandbox memory limit in MB */
-  sandboxMemoryLimit: number;
-
-  /** Enable debug logging */
+  /**
+   * Enable debug logging.
+   */
   debug: boolean;
+
+  /**
+   * Timeout for script execution (milliseconds).
+   * Note: This is a soft timeout using Promise.race(), not enforced by isolate.
+   */
+  timeout: number;
 }
 
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   scriptsDir: 'scripts/cards',
-  hotReload: true,
-  sandboxPoolSize: 10,
-  sandboxTimeout: 1000,
-  sandboxMemoryLimit: 128,
+  hotReload: process.env.NODE_ENV !== 'production',
   debug: false,
+  timeout: 5000, // 5 seconds
 };
 
 // ============================================================================
-// Runtime Class
+// CARD SCRIPT RUNTIME
 // ============================================================================
 
 export class CardScriptRuntime {
   private config: RuntimeConfig;
   private loader: CardScriptLoader;
-  private sandboxPool: SandboxPool;
-  private apiFactory: APIFactory;
-  private isInitialized: boolean = false;
+  private isInitialized = false;
 
-  constructor(config: Partial<RuntimeConfig> = {}, apiFactory?: APIFactory) {
+  constructor(config: Partial<RuntimeConfig> = {}) {
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...config };
 
     // Create loader
@@ -76,21 +78,11 @@ export class CardScriptRuntime {
       debug: this.config.debug,
     });
 
-    // Create sandbox pool
-    this.sandboxPool = new SandboxPool(this.config.sandboxPoolSize, {
-      timeout: this.config.sandboxTimeout,
-      memoryLimit: this.config.sandboxMemoryLimit,
-      debug: this.config.debug,
-    });
-
-    // Use provided factory or create default
-    this.apiFactory = apiFactory || new DefaultAPIFactory();
-
     this.log('Runtime created', { config: this.config });
   }
 
   /**
-   * Initialize runtime (load scripts, setup sandbox pool).
+   * Initialize runtime (load scripts, setup hot-reload).
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -100,13 +92,16 @@ export class CardScriptRuntime {
     await this.loader.initialize();
 
     this.isInitialized = true;
-    this.log('Runtime initialized', {
-      scriptsLoaded: this.loader.getAllScripts().length,
-    });
+    this.log('Runtime initialized');
   }
 
   /**
-   * Execute a card hook (e.g., onPlay, onDeath, etc.).
+   * Execute a card hook.
+   *
+   * @param hookName - Hook to execute (e.g., 'onPlay', 'onAttack')
+   * @param card - Card definition
+   * @param game - Game instance
+   * @param additionalContext - Additional context data (targets, eventData, etc.)
    */
   async executeHook(
     hookName: keyof CardScript,
@@ -118,144 +113,120 @@ export class CardScriptRuntime {
       throw new Error('Runtime not initialized');
     }
 
-    // Get script for card
-    const loadedScript = this.loader.getScript(card.id);
-    if (!loadedScript) {
-      this.log(`No script found for card: ${card.id}`, undefined, 'debug');
+    // Load script
+    let script: CardScript;
+    try {
+      // Use scriptPath if available (allows multiple cards to share same script)
+      // Otherwise fall back to card.id
+      const scriptId = card.scriptPath ? card.scriptPath.replace('cards/', '').replace('.ts', '') : card.id;
+      script = await this.loader.loadScript(scriptId);
+    } catch (error: any) {
+      // Script not found or failed to load - this is OK, card just has no script
+      this.log(`No script for card ${card.id}: ${error.message}`, undefined, 'debug');
       return;
     }
 
     // Check if hook exists
-    if (!loadedScript.script[hookName]) {
-      this.log(`Hook ${hookName} not defined for card: ${card.id}`, undefined, 'debug');
+    const hook = script[hookName];
+    if (!hook || typeof hook !== 'function') {
+      this.log(`Hook ${hookName} not defined for card ${card.id}`, undefined, 'debug');
       return;
     }
 
     // Build context
     const context = this.buildContext(card, game, additionalContext);
 
-    // Acquire sandbox from pool
-    const sandbox = await this.sandboxPool.acquire();
-
+    // Execute hook directly (with timeout wrapper)
     try {
-      // Execute script in sandbox
-      await sandbox.executeScript(
-        loadedScript.compiledCode,
-        context,
-        hookName,
-        [context]
+      this.log(`Executing ${hookName} for ${card.id}`, undefined, 'debug');
+
+      // Execute hook (type assertion needed because hooks have varying signatures)
+      // We trust TypeScript caught signature mismatches at compile time
+      await this.executeWithTimeout(
+        async () => await (hook as any)(context),
+        this.config.timeout,
+        `Script timeout for ${card.id}.${hookName}`
       );
 
-      this.log(`Executed ${hookName} for card: ${card.id}`, undefined, 'debug');
-    } catch (error) {
-      this.log(`Error executing ${hookName} for card: ${card.id}`, { error }, 'error');
-      throw error;
-    } finally {
-      // Release sandbox back to pool
-      this.sandboxPool.release(sandbox);
+      this.log(`Completed ${hookName} for ${card.id}`, undefined, 'debug');
+    } catch (error: any) {
+      this.log(`Error in ${hookName} for ${card.id}`, { error: error.message }, 'error');
+
+      // Re-throw error to propagate to caller
+      // In production, caller can decide whether to crash or log
+      throw new Error(`Script error in ${card.id}.${hookName}: ${error.message}`);
     }
   }
 
-  /**
-   * Execute onPlay hook.
-   */
+  // -------------------------------------------------------------------------
+  // CONVENIENCE METHODS (commonly used hooks)
+  // -------------------------------------------------------------------------
+
   async onPlay(card: Card, game: Game, targets?: GameCard[]): Promise<void> {
-    const contextExtension: Partial<CardContext> = {};
-    if (targets) {
-      contextExtension.targets = targets;
-    }
-    return this.executeHook('onPlay', card, game, contextExtension);
+    return this.executeHook('onPlay', card, game, targets ? { targets } : undefined);
   }
 
-  /**
-   * Execute onDeath hook.
-   */
   async onDeath(card: Card, game: Game): Promise<void> {
     return this.executeHook('onDeath', card, game);
   }
 
-  /**
-   * Execute onTurnStart hook.
-   */
   async onTurnStart(card: Card, game: Game): Promise<void> {
     return this.executeHook('onTurnStart', card, game);
   }
 
-  /**
-   * Execute onTurnEnd hook.
-   */
   async onTurnEnd(card: Card, game: Game): Promise<void> {
     return this.executeHook('onTurnEnd', card, game);
   }
 
-  /**
-   * Execute onAttack hook.
-   */
-  async onAttack(card: Card, game: Game, defender: GameCard): Promise<void> {
-    return this.executeHook('onAttack', card, game, { targets: [defender] });
+  async onAttack(card: Card, game: Game, targets?: GameCard[]): Promise<void> {
+    return this.executeHook('onAttack', card, game, targets ? { targets } : undefined);
   }
 
-  /**
-   * Execute onDefend hook.
-   */
-  async onDefend(card: Card, game: Game, attacker: GameCard): Promise<void> {
-    const contextExtension: Partial<CardContext> = {
-      targets: [attacker],
-    };
-    return this.executeHook('onDefend', card, game, contextExtension);
+  async onDefend(card: Card, game: Game, attacker?: GameCard): Promise<void> {
+    return this.executeHook('onDefend', card, game, attacker ? { targets: [attacker] } : undefined);
   }
 
-  /**
-   * Execute onDamage hook.
-   */
-  async onDamage(card: Card, game: Game, amount: number, target: GameCard): Promise<void> {
+  async onDamage(card: Card, game: Game, amount: number, target?: GameCard): Promise<void> {
     return this.executeHook('onDamage', card, game, {
-      targets: [target],
+      ...(target && { targets: [target] }),
       eventData: { amount },
     });
   }
 
-  /**
-   * Execute onDamaged hook.
-   */
   async onDamaged(card: Card, game: Game, amount: number, source?: GameCard): Promise<void> {
-    const contextExtension: Partial<CardContext> = {
+    return this.executeHook('onDamaged', card, game, {
+      ...(source && { targets: [source] }),
       eventData: { amount },
-    };
-
-    if (source) {
-      contextExtension.targets = [source];
-    }
-
-    return this.executeHook('onDamaged', card, game, contextExtension);
+    });
   }
 
   /**
    * Check if card can be played (custom validation).
    */
   async canPlay(card: Card, game: Game): Promise<boolean> {
-    const loadedScript = this.loader.getScript(card.id);
-    if (!loadedScript || !loadedScript.script.canPlay) {
-      return true; // No custom validation
+    if (!this.isInitialized) {
+      throw new Error('Runtime not initialized');
     }
 
-    const context = this.buildContext(card, game);
-    const sandbox = await this.sandboxPool.acquire();
-
     try {
-      const result = await sandbox.executeScript(
-        loadedScript.compiledCode,
-        context,
-        'canPlay',
-        [context]
+      const script = await this.loader.loadScript(card.id);
+      if (!script.canPlay) {
+        return true; // No custom validation
+      }
+
+      const context = this.buildContext(card, game);
+
+      const result = await this.executeWithTimeout(
+        () => script.canPlay!(context),
+        this.config.timeout,
+        `canPlay timeout for ${card.id}`
       );
 
       return result === true;
     } catch (error) {
-      this.log(`Error in canPlay for card: ${card.id}`, { error }, 'error');
-      return false;
-    } finally {
-      this.sandboxPool.release(sandbox);
+      // If script fails, default to allowing play
+      this.log(`canPlay error for ${card.id}, defaulting to true`, { error }, 'warn');
+      return true;
     }
   }
 
@@ -263,62 +234,114 @@ export class CardScriptRuntime {
    * Check if target is valid (custom validation).
    */
   async canTarget(card: Card, game: Game, target: GameCard): Promise<boolean> {
-    const loadedScript = this.loader.getScript(card.id);
-    if (!loadedScript || !loadedScript.script.canTarget) {
-      return true; // No custom validation
+    if (!this.isInitialized) {
+      throw new Error('Runtime not initialized');
     }
 
-    const context = this.buildContext(card, game, { targets: [target] });
-    const sandbox = await this.sandboxPool.acquire();
-
     try {
-      const result = await sandbox.executeScript(
-        loadedScript.compiledCode,
-        context,
-        'canTarget',
-        [context, target]
+      const script = await this.loader.loadScript(card.id);
+      if (!script.canTarget) {
+        return true; // No custom validation
+      }
+
+      const context = this.buildContext(card, game, { targets: [target] });
+
+      const result = await this.executeWithTimeout(
+        () => script.canTarget!(context, target),
+        this.config.timeout,
+        `canTarget timeout for ${card.id}`
       );
 
       return result === true;
     } catch (error) {
-      this.log(`Error in canTarget for card: ${card.id}`, { error }, 'error');
-      return false;
-    } finally {
-      this.sandboxPool.release(sandbox);
+      this.log(`canTarget error for ${card.id}, defaulting to true`, { error }, 'warn');
+      return true;
     }
   }
 
+  // -------------------------------------------------------------------------
+  // INTERNAL METHODS
+  // -------------------------------------------------------------------------
+
   /**
-   * Build card context for script execution.
+   * Build CardContext for script execution.
    */
   private buildContext(
     card: Card,
     game: Game,
     additionalContext?: Partial<CardContext>
   ): CardContext {
-    // Find card owner
+    // Find card owner in game
     const owner = this.findCardOwner(card, game);
     if (!owner) {
       throw new Error(`Cannot find owner for card: ${card.id}`);
     }
 
-    // Create safe game state
-    const safeGameState = this.createSafeGameState(game);
+    // Find GameCard instance for this card (if it exists in game)
+    const self = this.findGameCardInstance(card, game);
+    if (!self) {
+      // Card not in game yet - create temporary instance
+      // This happens when validating canPlay before card enters game
+      const tempSelf = createGameCard(card, owner, 'hand');
+      tempSelf.instanceId = `temp-${card.id}`; // Override with temp ID
+      tempSelf.ready = true;
 
-    // Create APIs
-    const battlefield = this.apiFactory.createBattlefieldAPI(game);
-    const chain = this.apiFactory.createChainAPI(game);
-    const random = this.apiFactory.createRandomAPI(game);
-    const log = this.apiFactory.createLogAPI(card.id);
+      // Create V3 APIs (instantiated per-game)
+      const actionExecutor = new ActionExecutor(game);
+      const modifierRegistry = new ModifierRegistry();
+      const triggerRegistry = new TriggerRegistry();
+
+      const v3APIs = createV3APIs(
+        actionExecutor,
+        modifierRegistry,
+        triggerRegistry,
+        owner,
+        game,
+        tempSelf
+      );
+
+      // Find opponent (in 1v1 games, always the other player)
+      const opponent = game.players.find(p => p.id !== owner.id);
+      if (!opponent) {
+        throw new Error(`Cannot find opponent for player: ${owner.id}`);
+      }
+
+      return {
+        self: tempSelf,
+        owner,
+        opponent,
+        game, // Direct reference to game instance
+        ...v3APIs, // Add actions, modifiers, triggers APIs
+        ...additionalContext,
+      };
+    }
+
+    // Find opponent (in 1v1 games, always the other player)
+    const opponent = game.players.find(p => p.id !== owner.id);
+    if (!opponent) {
+      throw new Error(`Cannot find opponent for player: ${owner.id}`);
+    }
+
+    // Create V3 APIs (instantiated per-game)
+    const actionExecutor = new ActionExecutor(game);
+    const modifierRegistry = new ModifierRegistry();
+    const triggerRegistry = new TriggerRegistry();
+
+    const v3APIs = createV3APIs(
+      actionExecutor,
+      modifierRegistry,
+      triggerRegistry,
+      owner,
+      game,
+      self
+    );
 
     return {
-      self: card,
+      self,
       owner,
-      game: safeGameState,
-      battlefield,
-      chain,
-      random,
-      log,
+      opponent,
+      game, // Direct reference to game instance
+      ...v3APIs, // Add actions, modifiers, triggers APIs
       ...additionalContext,
     };
   }
@@ -330,75 +353,93 @@ export class CardScriptRuntime {
     // Search in both players' zones
     for (const player of game.players) {
       // Check all zones
-      const zones = Object.values(player.zones);
-      for (const zone of zones) {
-        if (Array.isArray(zone)) {
-          const found = zone.find((c) => c.cardId === card.id);
-          if (found) {
-            return player;
-          }
+      const allCards = [
+        ...player.zones.hand,
+        ...player.zones.mainDeck,
+        ...player.zones.runeDeck,
+        ...player.zones.championZone,
+        ...player.zones.trash,
+        ...player.zones.banishment,
+        ...player.zones.base,
+        ...player.zones.runes,
+      ];
+
+      const found = allCards.find((c) => c.cardId === card.id);
+      if (found) {
+        return player;
+      }
+    }
+
+    // If not found in zones, check battlefield units
+    for (const battlefield of game.battlefields) {
+      for (const unit of battlefield.units) {
+        if (unit.cardId === card.id) {
+          return game.players.find(p => p.id === unit.ownerId);
         }
       }
     }
+
     return undefined;
   }
 
   /**
-   * Create safe (read-only) game state for scripts.
+   * Find GameCard instance for a card definition.
    */
-  private createSafeGameState(game: Game): SafeGameState {
-    return {
-      turn: game.round,
-      phase: game.phase,
-      activePlayer: game.players[game.currentPlayerIndex].id,
-      players: game.players.map((p) => ({
-        id: p.id,
-        name: p.name,
-        health: 20, // TODO: Get from actual health system
-        maxHealth: 20,
-        mana: p.runePool.energy,
-        maxMana: p.runePool.energy, // TODO: Track max mana
-        deckSize: p.zones.mainDeck.length,
-        handSize: p.zones.hand.length,
-        graveyardSize: p.zones.trash.length,
-      })),
-      battlefield: game.battlefields.flatMap((bf) =>
-        bf.units.map((unit) => ({
-          id: unit.instanceId,
-          cardId: unit.cardId,
-          name: 'Unit', // TODO: Get from card definition
-          type: 'unit',
-          owner: unit.ownerId,
-          attack: 0, // TODO: Get from card stats
-          health: 0,
-          maxHealth: 0,
-          position: { row: 0, col: 0 }, // TODO: Implement grid positions
-          status: [],
-          keywords: [],
-          canMove: unit.ready,
-          canAttack: unit.ready && !unit.temporaryModifiers.length,
-          hasAttacked: false,
-        }))
-      ),
-    };
+  private findGameCardInstance(card: Card, game: Game): GameCard | undefined {
+    // Search in all player zones
+    for (const player of game.players) {
+      const allCards = [
+        ...player.zones.hand,
+        ...player.zones.mainDeck,
+        ...player.zones.runeDeck,
+        ...player.zones.championZone,
+        ...player.zones.trash,
+        ...player.zones.banishment,
+        ...player.zones.base,
+        ...player.zones.runes,
+      ];
+
+      const found = allCards.find((c) => c.cardId === card.id);
+      if (found) return found;
+    }
+
+    // Check battlefield units
+    for (const battlefield of game.battlefields) {
+      const found = battlefield.units.find((u) => u.cardId === card.id);
+      if (found) return found;
+    }
+
+    return undefined;
   }
 
   /**
-   * Get loader (for accessing scripts).
+   * Execute function with timeout.
+   */
+  private async executeWithTimeout<T>(
+    fn: () => Promise<T>,
+    timeoutMs: number,
+    errorMessage: string
+  ): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+    });
+
+    return Promise.race([fn(), timeoutPromise]);
+  }
+
+  // -------------------------------------------------------------------------
+  // PUBLIC API
+  // -------------------------------------------------------------------------
+
+  /**
+   * Get loader instance (for accessing scripts directly).
    */
   getLoader(): CardScriptLoader {
     return this.loader;
   }
 
   /**
-   * Get sandbox pool stats.
-   */
-  getSandboxPoolStats(): { size: number } {
-    return { size: this.config.sandboxPoolSize };
-  }
-
-  /**
-   * Reload all scripts.
+   * Reload all scripts (clear cache and re-initialize).
    */
   async reloadAllScripts(): Promise<void> {
     this.loader.clearCache();
@@ -407,11 +448,10 @@ export class CardScriptRuntime {
   }
 
   /**
-   * Shutdown runtime.
+   * Shutdown runtime (close watcher, clear cache).
    */
   async shutdown(): Promise<void> {
     await this.loader.shutdown();
-    this.sandboxPool.dispose();
     this.isInitialized = false;
     this.log('Runtime shutdown');
   }
@@ -432,147 +472,3 @@ export class CardScriptRuntime {
     }
   }
 }
-
-// ============================================================================
-// API Factory Interface
-// ============================================================================
-
-/**
- * Factory for creating API implementations.
- * Allows dependency injection for testing.
- */
-export interface APIFactory {
-  createBattlefieldAPI(game: Game): BattlefieldAPI;
-  createChainAPI(game: Game): ChainAPI;
-  createRandomAPI(game: Game): RandomAPI;
-  createLogAPI(cardId: string): LogAPI;
-}
-
-/**
- * Default API factory with stub implementations.
- * These will be replaced with real implementations in Step 0.5.
- */
-export class DefaultAPIFactory implements APIFactory {
-  createBattlefieldAPI(game: Game): BattlefieldAPI {
-    return {
-      getEntity: (entityId: string) => {
-        console.warn('BattlefieldAPI.getEntity stub called');
-        return undefined;
-      },
-      getEntities: (filter?: any) => {
-        console.warn('BattlefieldAPI.getEntities stub called');
-        return [];
-      },
-      getEntitiesInArea: (area: any) => {
-        console.warn('BattlefieldAPI.getEntitiesInArea stub called');
-        return [];
-      },
-      dealDamage: (target: string | GameCard, amount: number, source?: string) => {
-        console.warn('BattlefieldAPI.dealDamage stub called', { target, amount, source });
-      },
-      heal: (target: string | GameCard, amount: number) => {
-        console.warn('BattlefieldAPI.heal stub called', { target, amount });
-      },
-      destroy: (target: string | GameCard) => {
-        console.warn('BattlefieldAPI.destroy stub called', { target });
-      },
-      move: (entity: string | GameCard, position: any) => {
-        console.warn('BattlefieldAPI.move stub called', { entity, position });
-      },
-      addStatus: (target: string | GameCard, status: string, duration?: number) => {
-        console.warn('BattlefieldAPI.addStatus stub called', { target, status, duration });
-      },
-      removeStatus: (target: string | GameCard, status: string) => {
-        console.warn('BattlefieldAPI.removeStatus stub called', { target, status });
-      },
-      modifyStats: (target: string | GameCard, stats: any) => {
-        console.warn('BattlefieldAPI.modifyStats stub called', { target, stats });
-      },
-      summon: (cardId: string, position: any, owner: string) => {
-        console.warn('BattlefieldAPI.summon stub called', { cardId, position, owner });
-      },
-      transform: (entity: string | GameCard, newCardId: string) => {
-        console.warn('BattlefieldAPI.transform stub called', { entity, newCardId });
-      },
-    };
-  }
-
-  createChainAPI(game: Game): ChainAPI {
-    return {
-      addEffect: (effect: any) => {
-        console.warn('ChainAPI.addEffect stub called', { effect });
-      },
-      counter: () => {
-        console.warn('ChainAPI.counter stub called');
-      },
-      getChainLength: () => {
-        console.warn('ChainAPI.getChainLength stub called');
-        return game.chain.length;
-      },
-      isEmpty: () => {
-        console.warn('ChainAPI.isEmpty stub called');
-        return game.chain.length === 0;
-      },
-    };
-  }
-
-  createRandomAPI(game: Game): RandomAPI {
-    // Use seeded RNG for deterministic replay
-    // For now, use Math.random() as placeholder
-    return {
-      int: (min: number, max: number) => {
-        return Math.floor(Math.random() * (max - min)) + min;
-      },
-      float: () => {
-        return Math.random();
-      },
-      pick: <T>(array: T[]): T => {
-        const element = array[Math.floor(Math.random() * array.length)];
-        if (element === undefined) {
-          throw new Error('Cannot pick from empty array');
-        }
-        return element;
-      },
-      shuffle: <T>(array: T[]): T[] => {
-        const shuffled = [...array];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          const temp = shuffled[i];
-          const swap = shuffled[j];
-          if (temp !== undefined && swap !== undefined) {
-            shuffled[i] = swap;
-            shuffled[j] = temp;
-          }
-        }
-        return shuffled;
-      },
-      chance: (probability: number) => {
-        return Math.random() < probability;
-      },
-    };
-  }
-
-  createLogAPI(cardId: string): LogAPI {
-    const prefix = `[Card:${cardId}]`;
-    return {
-      info: (message: string, data?: any) => {
-        console.info(`${prefix} ${message}`, data || '');
-      },
-      warn: (message: string, data?: any) => {
-        console.warn(`${prefix} ${message}`, data || '');
-      },
-      error: (message: string, data?: any) => {
-        console.error(`${prefix} ${message}`, data || '');
-      },
-      debug: (message: string, data?: any) => {
-        console.debug(`${prefix} ${message}`, data || '');
-      },
-    };
-  }
-}
-
-// ============================================================================
-// Exports
-// ============================================================================
-
-export { CardScriptLoader, CardScriptSandbox, SandboxPool };

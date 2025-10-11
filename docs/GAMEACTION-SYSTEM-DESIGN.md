@@ -1,28 +1,103 @@
 # GameAction System - Architettura e Piano di Implementazione
 
 **Progetto:** Riftbound TCG
-**Versione:** 1.0
-**Data:** 2025-10-07
+**Versione:** 1.1
+**Data:** 2025-10-09 (Updated)
 **Autore:** Sistema V3 - GameAction Architecture
+
+---
+
+## 🎯 Implementation Status (Updated 2025-10-09)
+
+**Overall Progress:** ✅ **Phase 1-5 COMPLETED** (Core + Modifiers + Triggers)
+
+### ✅ Completed (83/84 tests passing - 98.8%)
+
+**Phase 1-3: Core Infrastructure & Actions**
+- ✅ GameAction base class with TypeScript strict mode
+- ✅ ActionExecutor with 7-phase pipeline
+- ✅ ModifierRegistry and TriggerRegistry
+- ✅ 5 Concrete Actions: DealDamage, DrawCard, PlayCard, AddEnergy, AddPower, MoveUnit
+- ✅ Test coverage: 38/39 tests passing
+
+**Phase 4: Modifier System** ⭐ NEW
+- ✅ DamageModifier (increase/reduce/multiply damage)
+- ✅ CostModifier (modify energy/power costs)
+- ✅ DrawModifier (modify draw count, can prevent)
+- ✅ Test coverage: 24/24 tests passing
+- ✅ Features: filters, max uses, one-shot, expiration, priority
+
+**Phase 5: Trigger System** ⭐ NEW
+- ✅ OnDamageDealtTrigger (react to damage)
+- ✅ OnCardPlayedTrigger (react to card plays)
+- ✅ OnUnitDeathTrigger (react to unit deaths)
+- ✅ Test coverage: 21/21 tests passing
+- ✅ Features: filters, max triggers, one-shot, expiration, priority
+
+**Total Test Coverage:** 83/84 passing (98.8%)
+
+### 📂 Files Implemented
+
+**Base Classes:**
+- `src/engine/actions/base/GameAction.ts`
+- `src/engine/actions/base/ActionModifier.ts`
+- `src/engine/actions/base/ActionTrigger.ts`
+
+**Core System:**
+- `src/engine/actions/ActionExecutor.ts`
+- `src/engine/actions/ModifierRegistry.ts`
+- `src/engine/actions/TriggerRegistry.ts`
+
+**Concrete Actions:**
+- `src/engine/actions/concrete/DealDamageAction.ts` (units only, no player damage)
+- `src/engine/actions/concrete/DrawCardAction.ts`
+- `src/engine/actions/concrete/PlayCardAction.ts`
+- `src/engine/actions/concrete/AddEnergyAction.ts`
+- `src/engine/actions/concrete/AddPowerAction.ts`
+- `src/engine/actions/concrete/MoveUnitAction.ts`
+
+**Concrete Modifiers:**
+- `src/engine/actions/modifiers/DamageModifier.ts`
+- `src/engine/actions/modifiers/CostModifier.ts`
+- `src/engine/actions/modifiers/DrawModifier.ts`
+
+**Concrete Triggers:**
+- `src/engine/actions/triggers/OnDamageDealtTrigger.ts`
+- `src/engine/actions/triggers/OnCardPlayedTrigger.ts`
+- `src/engine/actions/triggers/OnUnitDeathTrigger.ts`
+
+### 🚧 Next Steps
+
+**Phase 6: Integration with V2 Card Scripting**
+- Connect ActionExecutor to card scripts
+- Provide modifierRegistry and triggerRegistry in CardScriptContext
+- Migrate example cards to use V3 actions
+
+**Future Enhancements:**
+- More concrete actions (TapRuneAction, RecycleRuneAction, etc.)
+- More modifiers (KeywordModifier, TargetModifier, etc.)
+- More triggers (OnAttackTrigger, OnPlayTrigger, etc.)
+- Integration with existing managers (GameManager, TurnManager, etc.)
 
 ---
 
 ## 📋 Indice
 
-1. [Executive Summary](#executive-summary)
-2. [Analisi del Sistema LoR](#analisi-del-sistema-lor)
-3. [Problemi del Sistema V2 Attuale](#problemi-del-sistema-v2-attuale)
-4. [Architettura del Sistema V3 - GameAction](#architettura-del-sistema-v3---gameaction)
-5. [Componenti Core](#componenti-core)
-6. [Sistema di Risoluzione](#sistema-di-risoluzione)
-7. [Modifier System](#modifier-system)
-8. [Trigger System](#trigger-system)
-9. [Priority e Timing Rules](#priority-e-timing-rules)
-10. [Integration con Card Scripts](#integration-con-card-scripts)
-11. [Piano di Implementazione](#piano-di-implementazione)
-12. [Esempi Pratici](#esempi-pratici)
-13. [Testing Strategy](#testing-strategy)
-14. [Performance Considerations](#performance-considerations)
+1. [Implementation Status](#implementation-status-updated-2025-10-09)
+2. [Executive Summary](#executive-summary)
+3. [Analisi del Sistema LoR](#analisi-del-sistema-lor)
+4. [Problemi del Sistema V2 Attuale](#problemi-del-sistema-v2-attuale)
+5. [Architettura del Sistema V3 - GameAction](#architettura-del-sistema-v3---gameaction)
+6. [Componenti Core](#componenti-core)
+7. [Sistema di Risoluzione](#sistema-di-risoluzione)
+8. [Modifier System](#modifier-system)
+9. [Trigger System](#trigger-system)
+10. [Priority e Timing Rules](#priority-e-timing-rules)
+11. [Integration con Card Scripts](#integration-con-card-scripts)
+12. [Piano di Implementazione](#piano-di-implementazione)
+13. [Esempi Pratici](#esempi-pratici)
+14. [Testing Strategy](#testing-strategy)
+15. [Performance Considerations](#performance-considerations)
 
 ---
 
@@ -85,128 +160,221 @@ Legends of Runeterra utilizza un'architettura a **tre layer**:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 🎮 LoR - Meccaniche Chiave
+### 🎮 Riftbound - Meccaniche Chiave
 
-#### 1. **Spell Speed System**
+#### 1. **Card Timing System**
 
-LoR ha 4 velocità di spell con regole di interazione diverse:
+Riftbound ha 3 timing keywords che determinano quando le carte possono essere giocate:
 
-| Spell Speed | Quando si può giocare | Interrompibile | Esempio |
-|-------------|----------------------|----------------|---------|
-| **Burst** | Qualsiasi momento | ❌ No (istantaneo) | Elixir of Iron |
-| **Focus** | Solo fuori combattimento | ❌ No | Crescendum |
-| **Fast** | Qualsiasi momento | ✅ Sì (stack) | Mystic Shot |
-| **Slow** | Solo azione principale | ✅ Sì (stack) | Judgment |
+| Timing Keyword | Quando si può giocare | Stati permessi | Esempio |
+|----------------|----------------------|----------------|---------|
+| **Default** | Solo nel proprio turno | Neutral Open | Maggioranza delle carte |
+| **Action** | Anche durante Showdown | Neutral Open, Showdown Open/Closed | Spell di risposta |
+| **Reaction** | Sempre, anche in Closed State | Tutti gli stati | Counter spell, instant effects |
 
-```csharp
-// LoR - Spell Speed Check
-public class CastSpellAction : GameAction {
-    public override bool CanExecute() {
-        if (this.Spell.Speed == SpellSpeed.Slow) {
-            return game.Stack.IsEmpty && !game.InCombat;
-        }
-        if (this.Spell.Speed == SpellSpeed.Focus) {
-            return !game.InCombat;
-        }
-        return true; // Fast/Burst sempre ok
+```typescript
+// Riftbound - Timing Check
+export class PlayCardAction extends GameAction {
+  validate(game: Game): ActionValidationResult {
+    const card = this.data.card;
+    const state = game.getTurnState();
+
+    // Default: solo Neutral Open nel proprio turno
+    if (!card.keywords.includes('Action') && !card.keywords.includes('Reaction')) {
+      if (state !== TurnState.NEUTRAL_OPEN || !this.isActivePlayer()) {
+        return this.validationFailure('Card can only be played during your Action Phase');
+      }
     }
+
+    // Action: anche durante Showdown
+    if (card.keywords.includes('Action') && !card.keywords.includes('Reaction')) {
+      if (!state.includes('SHOWDOWN') && state !== TurnState.NEUTRAL_OPEN) {
+        return this.validationFailure('Action cards can only be played during Neutral Open or Showdowns');
+      }
+    }
+
+    // Reaction: sempre
+    // Nessuna restrizione per Reaction
+
+    return this.validationSuccess();
+  }
 }
 ```
 
-#### 2. **Stack Resolution**
+#### 2. **Chain Resolution**
 
-Lo **stack** di LoR segue regole precise:
+La **Chain** di Riftbound funziona come uno stack LIFO per spell e abilità:
 
-- Massimo **9 Fast/Slow** spell + 1 slot per Burst
-- Risoluzione **LIFO** (Last In, First Out) come Magic: The Gathering
-- Burst spell risolvono immediatamente senza dare priorità
+- Risoluzione **LIFO** (Last In, First Out)
+- Dopo ogni risoluzione si esegue una **Cleanup**
+- Permanents (Unit/Gear) non danno priority prima della risoluzione
+- Tutti i Relevant Players devono passare in sequenza per risolvere
 
-```csharp
-// LoR - Stack Resolution
-public class SpellStack {
-    private List<SpellAction> stack = new List<SpellAction>();
+```typescript
+// Riftbound - Chain Resolution
+export class ChainResolver {
+  private chain: ChainItem[] = [];
 
-    public void Push(SpellAction spell) {
-        if (spell.Speed == SpellSpeed.Burst) {
-            spell.Execute(); // Risolvi immediatamente
-            return;
-        }
+  async addToChain(item: SpellAction | ActivatedAbility): Promise<void> {
+    this.chain.push(item);
 
-        if (stack.Count >= 9) {
-            throw new StackFullException();
-        }
+    // Se il gioco era in Neutral Open, ora è in Neutral Closed (o Showdown Closed)
+    this.game.enterClosedState();
 
-        stack.Add(spell);
+    // Permanents non danno priority
+    if (item.isPermanent) {
+      await this.attemptResolution();
     }
+  }
 
-    public void Resolve() {
-        // LIFO: ultimo spell giocato risolve per primo
-        while (stack.Count > 0) {
-            var spell = stack[stack.Count - 1];
-            stack.RemoveAt(stack.Count - 1);
+  async resolve(): Promise<void> {
+    // LIFO: ultimo item risolve per primo
+    const item = this.chain.pop();
+    if (!item) return;
 
-            spell.Execute();
-        }
+    // Esegui l'item
+    await this.game.actions.execute(item.action);
+
+    // Cleanup dopo ogni risoluzione
+    await this.game.performCleanup();
+
+    // Se chain vuota, torna a Open State
+    if (this.chain.length === 0) {
+      this.game.exitClosedState();
     }
+  }
 }
 ```
 
-#### 3. **Combat Resolution Order**
+#### 3. **Combat Resolution**
 
-Il combattimento risolve da **sinistra a destra**:
+Il combattimento di Riftbound segue una struttura rigida con Showdown:
 
 ```
-Attacker:  [Unit A] [Unit B] [Unit C]
-              ↓        ↓        ↓
-Blocker:   [Unit X] [Unit Y]  [...]
+Combat Structure:
+1. Showdown Step (Initial Chain con trigger "When I attack"/"When I defend")
+2. Combat Damage Step (distribuzione danno con Tank priority)
+3. Resolution Step (rimuovi unità, verifica Conquer)
+4. Cleanup
 
-Risoluzione:
-1. A vs X → Danni simultanei
-2. B vs Y → Danni simultanei
-3. C non bloccato → Danno al nexus
-4. Death check DOPO tutti i danni
+Distribuzione Danno:
+- Attacker distribuisce per primo
+- Unità con Tank devono ricevere danno letale prima
+- Danno letale = danno ≥ Might dell'unità
 ```
 
-```csharp
-// LoR - Combat Resolution
-public class CombatAction : GameAction {
-    public override void Execute() {
-        // 1. Risolvi combat da sinistra a destra
-        foreach (var attacker in attackers.OrderBy(u => u.BoardPosition)) {
-            var blocker = GetBlocker(attacker);
+```typescript
+// Riftbound - Combat Resolution
+export class ResolveCombatAction extends GameAction {
+  async execute(game: Game): Promise<ActionExecutionResult> {
+    const { attackers, defenders, battlefield } = this.data;
 
-            // Crea sub-action per il duello
-            var combat = new UnitCombatAction(attacker, blocker);
-            game.Execute(combat); // Pipeline completa
-        }
+    // 1. Applica bonus Assault/Shield
+    attackers.forEach(u => {
+      if (u.keywords.includes('Assault')) u.temporaryMight += 1;
+    });
+    defenders.forEach(u => {
+      if (u.keywords.includes('Shield')) u.temporaryMight += 1;
+    });
 
-        // 2. Death check solo DOPO tutti i combat
-        game.ProcessDeaths();
+    // 2. Calcola total Might
+    const attackerMight = attackers.reduce((sum, u) => sum + u.getMight(), 0);
+    const defenderMight = defenders.reduce((sum, u) => sum + u.getMight(), 0);
+
+    // 3. Distribuisci danno (Attacker per primo)
+    await this.distributeDamage(attackers, attackerMight, defenders);
+    await this.distributeDamage(defenders, defenderMight, attackers);
+
+    // 4. Rimuovi unità con danno letale
+    await game.processDeaths();
+
+    // 5. Verifica Conquer se solo attackers rimangono
+    const remainingAttackers = attackers.filter(u => !u.isDead);
+    const remainingDefenders = defenders.filter(u => !u.isDead);
+
+    if (remainingAttackers.length > 0 && remainingDefenders.length === 0) {
+      await this.processConquer(battlefield, this.controller);
     }
+
+    return this.executionSuccess();
+  }
+
+  private async distributeDamage(
+    sources: GameCard[],
+    totalDamage: number,
+    targets: GameCard[]
+  ): Promise<void> {
+    // Tank units devono ricevere danno letale prima
+    const tanksFirst = [
+      ...targets.filter(u => u.keywords.includes('Tank')),
+      ...targets.filter(u => !u.keywords.includes('Tank'))
+    ];
+
+    let remainingDamage = totalDamage;
+
+    for (const target of tanksFirst) {
+      const lethalDamage = target.getMight();
+      const damageToApply = Math.min(remainingDamage, lethalDamage);
+
+      await game.actions.execute(new DealDamageAction(this.controller, {
+        source: null, // Combat damage non ha singola source
+        target,
+        amount: damageToApply,
+        damageType: 'combat'
+      }));
+
+      remainingDamage -= damageToApply;
+      if (remainingDamage <= 0) break;
+    }
+  }
 }
 ```
 
-#### 4. **Priority System**
+#### 4. **Priority & Focus System**
 
-Alcune abilità hanno **priorità fissa** che supera l'ordine di gioco:
+Riftbound usa **Priority** per azioni normali e **Focus** durante Showdown:
 
-```csharp
-public enum TriggerPriority {
-    VeryEarly = -100,  // es: Redemption (Secret)
-    Early = -10,
-    Normal = 0,        // Default
-    Late = 10,
-    VeryLate = 100     // es: Death triggers
+```typescript
+export enum PriorityState {
+  NONE = 'none',
+  PRIORITY = 'priority',    // Può fare Discretionary Actions
+  FOCUS = 'focus',          // Priority + controllo Showdown
 }
 
-// Trigger ordinati per priorità, POI per ordine di gioco
-public class TriggerQueue {
-    public void Sort() {
-        triggers = triggers
-            .OrderBy(t => t.Priority)
-            .ThenBy(t => t.PlayOrder)
-            .ToList();
+export class PriorityManager {
+  getCurrentPriorityPlayer(): Player | null {
+    const state = this.game.getTurnState();
+
+    // Neutral Open: Turn Player ha priority
+    if (state === TurnState.NEUTRAL_OPEN) {
+      return this.game.getTurnPlayer();
     }
+
+    // Showdown Open: chi ha Focus ha priority
+    if (state === TurnState.SHOWDOWN_OPEN) {
+      return this.game.showdown.getFocusPlayer();
+    }
+
+    // Closed State: chi controlla il prossimo item sulla Chain
+    if (state.includes('CLOSED')) {
+      return this.getNextChainController();
+    }
+
+    return null;
+  }
+
+  passPriority(): void {
+    const state = this.game.getTurnState();
+
+    if (state.includes('SHOWDOWN')) {
+      // Durante Showdown, passare priority mantiene Focus
+      // Ma il prossimo Relevant Player riceve priority
+      this.moveToNextRelevantPlayer();
+    } else {
+      // Durante Neutral, passare termina il turno/fase
+      this.endCurrentPhase();
+    }
+  }
 }
 ```
 
@@ -669,6 +837,28 @@ export enum GameActionType {
   START_TURN = 'start_turn',
   END_TURN = 'end_turn',
   PASS_PRIORITY = 'pass_priority',
+  PASS_FOCUS = 'pass_focus',
+
+  // ===== SHOWDOWN ACTIONS =====
+  ENTER_SHOWDOWN = 'enter_showdown',
+  EXIT_SHOWDOWN = 'exit_showdown',
+  START_COMBAT = 'start_combat',
+  RESOLVE_COMBAT = 'resolve_combat',
+
+  // ===== BATTLEFIELD ACTIONS =====
+  MOVE_UNIT = 'move_unit',
+  CONQUER_BATTLEFIELD = 'conquer_battlefield',
+  GAIN_CONTROL = 'gain_control',
+  LOSE_CONTROL = 'lose_control',
+
+  // ===== SCORING ACTIONS =====
+  SCORE_HOLD = 'score_hold',
+  SCORE_CONQUER = 'score_conquer',
+  GAIN_POINT = 'gain_point',
+
+  // ===== CLEANUP ACTIONS =====
+  PERFORM_CLEANUP = 'perform_cleanup',
+  CHECK_DEATHS = 'check_deaths',
 
   // ===== META ACTIONS =====
   NULL_ACTION = 'null_action', // Action che non fa nulla (per replacement)
@@ -1001,101 +1191,151 @@ export class TriggerRegistry {
 
 ## Sistema di Risoluzione
 
-### Stack-Based Resolution
+### Chain-Based Resolution
 
-Implementeremo un sistema di stack simile a LoR/MTG per la risoluzione di spell e abilità:
+Implementeremo il sistema di Chain di Riftbound per la risoluzione di spell e abilità:
 
 ```typescript
 /**
- * Stack per la risoluzione di spell e abilità.
+ * Chain per la risoluzione di spell e abilità secondo le regole Riftbound.
  * Segue la regola LIFO (Last In, First Out).
  */
-export class ActionStack {
-  private stack: StackEntry[] = [];
-  private maxSize: number = 10; // Come LoR
+export class GameChain {
+  private chain: ChainEntry[] = [];
+  private passCount: number = 0; // Contatore di pass consecutivi
 
   /**
-   * Push an action onto the stack.
+   * Add spell/ability to the Chain.
    */
-  push(action: GameAction, speed: ActionSpeed): void {
-    if (this.stack.length >= this.maxSize) {
-      throw new Error('Stack overflow - maximum 10 actions on stack');
-    }
-
-    const entry: StackEntry = {
+  async add(action: GameAction, timing: CardTiming): Promise<void> {
+    const entry: ChainEntry = {
       action,
-      speed,
+      timing,
+      controller: action.controller,
       timestamp: Date.now(),
     };
 
-    // Burst speed risolve immediatamente
-    if (speed === ActionSpeed.BURST) {
-      this.resolveBurst(entry);
-      return;
-    }
+    this.chain.push(entry);
 
-    // Slow speed può essere solo in fondo allo stack
-    if (speed === ActionSpeed.SLOW && this.stack.length > 0) {
-      throw new Error('Cannot play Slow action while stack is not empty');
-    }
+    // Il gioco entra in Closed State
+    this.game.enterClosedState();
 
-    this.stack.push(entry);
-  }
+    // Reset pass count
+    this.passCount = 0;
 
-  /**
-   * Resolve the entire stack (LIFO order).
-   */
-  async resolveAll(executor: ActionExecutor): Promise<void> {
-    while (this.stack.length > 0) {
-      const entry = this.stack.pop()!;
-
-      // Resolve da ultimo a primo (LIFO)
-      await executor.execute(entry.action);
+    // Permanents (Unit/Gear) non danno priority prima di risoluzione
+    if (action.data.isPermanent) {
+      // Priority passa automaticamente
+      await this.attemptResolution();
     }
   }
 
   /**
-   * Resolve a single Burst action immediately.
+   * Player passa priority.
    */
-  private async resolveBurst(entry: StackEntry): Promise<void> {
-    // Burst non va nello stack, risolve immediatamente
-    // Ma trigger normalmente
+  async passPriority(player: Player): Promise<void> {
+    this.passCount++;
+
+    const relevantPlayers = this.getRelevantPlayers();
+
+    // Se tutti i Relevant Players hanno passato in sequenza → risolvi
+    if (this.passCount >= relevantPlayers.length) {
+      await this.resolveTop();
+    } else {
+      // Priority passa al prossimo Relevant Player
+      this.moveToNextRelevantPlayer();
+    }
+  }
+
+  /**
+   * Risolvi il top item della Chain.
+   */
+  private async resolveTop(): Promise<void> {
+    if (this.chain.length === 0) return;
+
+    // LIFO: ultimo item risolve per primo
+    const entry = this.chain.pop()!;
+
+    // Esegui l'action
     await this.game.actions.execute(entry.action);
+
+    // Reset pass count
+    this.passCount = 0;
+
+    // Cleanup DOPO ogni risoluzione (regole Riftbound)
+    await this.game.performCleanup();
+
+    // Se Chain vuota, torna a Open State
+    if (this.chain.length === 0) {
+      this.game.exitClosedState();
+
+      // Se eravamo in Showdown, Focus passa
+      if (this.game.isShowdown()) {
+        this.game.showdown.passFocus();
+      }
+    } else {
+      // Altrimenti, continua con il prossimo item
+      // Priority al controller del prossimo item
+      await this.attemptResolution();
+    }
   }
 
   /**
-   * Check if stack is empty.
+   * Tentativo di risoluzione automatica (per permanents).
+   */
+  private async attemptResolution(): Promise<void> {
+    // Se tutti passano subito → risolvi
+    const relevantPlayers = this.getRelevantPlayers();
+
+    // Dai priority ai Relevant Players in ordine
+    // (simulato - in realtà il gioco chiederà input)
+  }
+
+  /**
+   * Check if Chain is empty.
    */
   isEmpty(): boolean {
-    return this.stack.length === 0;
+    return this.chain.length === 0;
   }
 
   /**
-   * Get stack size.
+   * Get Chain size.
    */
   size(): number {
-    return this.stack.length;
+    return this.chain.length;
   }
 
   /**
-   * Peek at top of stack without removing.
+   * Peek at top of Chain without removing.
    */
-  peek(): StackEntry | null {
-    return this.stack.length > 0 ? this.stack[this.stack.length - 1] : null;
+  peek(): ChainEntry | null {
+    return this.chain.length > 0 ? this.chain[this.chain.length - 1] : null;
+  }
+
+  /**
+   * Get Relevant Players per questa Chain.
+   */
+  private getRelevantPlayers(): Player[] {
+    // Logic per determinare chi può rispondere
+    // (dipende dal contesto - Combat, Showdown, etc.)
+    return this.game.getRelevantPlayers();
   }
 }
 
-interface StackEntry {
+interface ChainEntry {
   action: GameAction;
-  speed: ActionSpeed;
+  timing: CardTiming;
+  controller: Player;
   timestamp: number;
 }
 
-export enum ActionSpeed {
-  BURST = 'burst',   // Risolve immediatamente
-  FAST = 'fast',     // Può andare sullo stack in qualsiasi momento
-  SLOW = 'slow',     // Solo quando stack è vuoto
-  FOCUS = 'focus',   // Solo fuori combattimento
+/**
+ * Card Timing (Riftbound keywords)
+ */
+export enum CardTiming {
+  DEFAULT = 'default',     // Solo Neutral Open nel proprio turno
+  ACTION = 'action',       // Anche durante Showdown
+  REACTION = 'reaction',   // Sempre, anche in Closed State
 }
 ```
 
@@ -1903,144 +2143,105 @@ export interface CardContext {
 
 ### Card Script Examples
 
-#### Example 1: Simple Damage Spell
+#### Example 1: Basic Rune (Riftbound)
 
 ```typescript
-// Spell: "Infliggi 3 danni a un'unità"
+// Rune: "[T]: Add [1] Energy" + "Recycle: Add [Domain] Power"
 export default {
-  onPlay: async (ctx: CardContext) => {
-    const target = ctx.targets[0];
-
+  // Tap ability
+  onTap: async (ctx: CardContext) => {
     // ❌ V2 (OLD): Direct mutation
-    // target.damage += 3;
+    // ctx.owner.runePool.energy += 1;
 
     // ✅ V3 (NEW): Create action
-    const action = new DealDamageAction(ctx.owner, {
+    const action = new AddEnergyAction(ctx.owner, {
       source: ctx.self,
-      target: target,
-      amount: 3,
-      damageType: 'spell',
+      amount: 1,
     });
 
     await ctx.execute(action);
-    // ^ Questo passa attraverso TUTTA la pipeline:
+    // ^ Questo passa attraverso la pipeline:
     //   - Validation
-    //   - Modifiers (spell damage +1, etc)
+    //   - Modifiers (es: "double next energy added")
     //   - Execution
-    //   - Triggers (Yasuo, etc)
+    //   - Triggers
+  },
+
+  // Recycle ability
+  onRecycle: async (ctx: CardContext) => {
+    const domain = ctx.self.domains[0];
+
+    // Create recycling action (move to rune deck bottom)
+    const recycleAction = new RecycleRuneAction(ctx.owner, {
+      rune: ctx.self,
+    });
+
+    await ctx.execute(recycleAction);
+
+    // Add power action
+    const addPowerAction = new AddPowerAction(ctx.owner, {
+      domain,
+      amount: 1,
+    });
+
+    await ctx.execute(addPowerAction);
   }
 };
 ```
 
-#### Example 2: Spell Damage Buff
+#### Example 2: Unit con Assault
 
 ```typescript
-// Unit: "I tuoi spell infliggono +1 danno"
+// Unit: "Assault +2" (Quando attacca, ottiene +2 Might)
 export default {
-  onEntersPlay: async (ctx: CardContext) => {
-    // Registra modifier quando entra in gioco
-    const modifier = new SpellDamagePlusOneModifier(ctx.self, ctx.owner);
+  // Triggered when combat starts
+  onAttack: async (ctx: CardContext) => {
+    // Il bonus Assault viene applicato automaticamente dal ResolveCombatAction
+    // Ma possiamo registrare un modifier per effetti addizionali
 
-    ctx.registerModifier(GameActionType.DEAL_DAMAGE, modifier);
+    const modifier = new AssaultBonusModifier(ctx.self, 2);
+
+    // Registra per questa combat soltanto
+    ctx.registerModifier(GameActionType.RESOLVE_COMBAT, modifier);
   },
 
-  onLeavesPlay: async (ctx: CardContext) => {
-    // Cleanup automatico quando lascia il gioco
+  onCombatEnd: async (ctx: CardContext) => {
+    // Cleanup automatico del modifier temporaneo
     ctx.cleanup();
   }
 };
 ```
 
-#### Example 3: Yasuo (Trigger)
+#### Example 3: Triggered Ability - "When I attack"
 
 ```typescript
-// Champion: "Quando stordisci un nemico, infliggi 2 danni"
+// Unit: "When I attack: Deal 1 damage to defending player"
 export default {
   onEntersPlay: async (ctx: CardContext) => {
-    // Registra trigger per stun
-    const trigger = new YasuoStunTrigger(ctx.self);
-
-    ctx.registerTrigger(GameActionType.STUN_UNIT, trigger);
-  },
-
-  onLeavesPlay: async (ctx: CardContext) => {
-    ctx.cleanup();
-  }
-};
-```
-
-#### Example 4: Barriera (One-Shot Modifier)
-
-```typescript
-// Spell: "Dai Barriera a un'unità"
-export default {
-  onPlay: async (ctx: CardContext) => {
-    const target = ctx.targets[0];
-
-    // Crea modifier one-shot per prevenire prossimo danno
-    const barrier = new BarrierModifier(target);
-
-    ctx.registerModifier(GameActionType.DEAL_DAMAGE, barrier);
-
-    // Visual feedback
-    ctx.game.effects.createEffect('barrier_grant', target);
-  }
-};
-```
-
-#### Example 5: Cost Reduction Aura
-
-```typescript
-// Unit: "I tuoi spell costano 1 in meno"
-export default {
-  onEntersPlay: async (ctx: CardContext) => {
-    const modifier = new SpellCostReductionModifier(ctx.owner, 1);
-
-    ctx.registerModifier(GameActionType.PLAY_CARD, modifier);
-  },
-
-  onLeavesPlay: async (ctx: CardContext) => {
-    ctx.cleanup();
-  }
-};
-```
-
-#### Example 6: Complex Triggered Ability
-
-```typescript
-// Unit: "Quando giochi uno spell, infliggi 1 danno casuale"
-export default {
-  onEntersPlay: async (ctx: CardContext) => {
+    // Registra trigger per attack
     const trigger = new class extends ActionTrigger {
-      readonly type = 'random_damage_on_spell';
+      readonly type = 'attack_burn_trigger';
       readonly priority = TriggerPriority.NORMAL;
 
       async onAction(action: GameAction, game: Game): Promise<GameAction[]> {
-        if (!(action instanceof CastSpellAction)) {
+        // Triggera solo su START_COMBAT
+        if (action.type !== GameActionType.START_COMBAT) {
           return [];
         }
 
-        // Solo spell del proprietario
-        if (action.controller.id !== ctx.owner.id) {
+        // Solo se questa unità sta attaccando
+        const combatData = action.data as CombatData;
+        if (!combatData.attackers.some(u => u.instanceId === ctx.self.instanceId)) {
           return [];
         }
 
-        // Trova target casuale
-        const opponent = game.players.find(p => p.id !== ctx.owner.id);
-        const validTargets = game.battlefield.units.filter(
-          u => u.ownerId === opponent?.id
-        );
+        // Trova defending player
+        const defendingPlayer = combatData.defender;
 
-        if (validTargets.length === 0) return [];
-
-        const randomTarget = validTargets[
-          Math.floor(Math.random() * validTargets.length)
-        ];
-
-        // Crea azione danno
+        // Crea damage action
         const damageAction = new DealDamageAction(ctx.owner, {
           source: ctx.self,
-          target: randomTarget,
+          target: defendingPlayer, // Danno al player!
           amount: 1,
           damageType: 'effect',
         });
@@ -2055,11 +2256,121 @@ export default {
       }
     };
 
-    ctx.registerTrigger(GameActionType.CAST_SPELL, trigger);
+    ctx.registerTrigger(GameActionType.START_COMBAT, trigger);
   },
 
   onLeavesPlay: async (ctx: CardContext) => {
     ctx.cleanup();
+  }
+};
+```
+
+#### Example 4: Deflect Keyword (Prevent Damage)
+
+```typescript
+// Spell: "Target unit gains Deflect 1" (Previene 1 danno)
+export default {
+  onPlay: async (ctx: CardContext) => {
+    const target = ctx.targets[0];
+
+    // Crea modifier one-shot per prevenire danno
+    const deflectModifier = new class extends ActionModifier {
+      readonly type = 'deflect';
+      readonly priority = ModifierPriority.PREVENTION;
+
+      constructor() {
+        super();
+        this.expiresAfterUses = 1; // Previene 1 danno
+      }
+
+      async modify(action: GameAction, game: Game): Promise<GameAction | null> {
+        if (action.type !== GameActionType.DEAL_DAMAGE) {
+          return action;
+        }
+
+        const damageData = action.data as DamageData;
+        if (damageData.target.instanceId !== target.instanceId) {
+          return action;
+        }
+
+        // Riduci danno di 1
+        const modified = action.clone();
+        modified.data.amount = Math.max(0, modified.data.amount - 1);
+
+        this.currentUses++;
+
+        return modified;
+      }
+
+      isActive(game: Game): boolean {
+        return game.battlefield.units.some(
+          u => u.instanceId === target.instanceId
+        );
+      }
+    };
+
+    ctx.registerModifier(GameActionType.DEAL_DAMAGE, deflectModifier);
+  }
+};
+```
+
+#### Example 5: Ganking Keyword (Move Battlefield to Battlefield)
+
+```typescript
+// Unit: "Ganking" (Può muovere tra battlefield)
+export default {
+  // Il keyword Ganking modifica la MoveUnitAction validation
+  canMove: async (ctx: CardContext, destination: Battlefield): Promise<boolean> => {
+    // Standard move validation
+    if (!ctx.self.ready) {
+      return false;
+    }
+
+    // Ganking permette move tra battlefield
+    if (ctx.self.keywords.includes('Ganking')) {
+      return true; // Può muovere ovunque
+    }
+
+    // Senza Ganking, solo Base ↔ Battlefield
+    const currentLocation = ctx.game.getUnitLocation(ctx.self);
+    const isAtBase = currentLocation.type === 'base';
+    const movingToBase = destination.type === 'base';
+
+    return isAtBase || movingToBase;
+  }
+};
+```
+
+#### Example 6: Rune Pool Interaction
+
+```typescript
+// Spell: "Draw cards equal to your Energy" (Reaction timing)
+export default {
+  // Ha keyword Reaction → può giocare in Closed State
+  timing: CardTiming.REACTION,
+
+  onPlay: async (ctx: CardContext) => {
+    // Conta Energy nel Rune Pool
+    const energy = ctx.owner.runePool.energy;
+
+    // Crea DrawCardAction per ogni Energy
+    const drawActions: GameAction[] = [];
+
+    for (let i = 0; i < energy; i++) {
+      const drawAction = new DrawCardAction(ctx.owner, {
+        amount: 1,
+      });
+
+      drawActions.push(drawAction);
+    }
+
+    // Esegui tutte le draw
+    for (const action of drawActions) {
+      await ctx.execute(action);
+    }
+
+    // Se il deck finisce → Burn Out!
+    // (gestito automaticamente dalla DrawCardAction)
   }
 };
 ```
@@ -2296,28 +2607,34 @@ Implementa i trigger più comuni:
 
 ---
 
-### Fase 6: Stack & Priority System (Settimana 7)
+### Fase 6: Chain & Priority/Focus System (Settimana 7)
 
 **Durata:** 5-7 giorni
 
-#### 6.1 Action Stack
-- [ ] `ActionStack` class implementato
+#### 6.1 Game Chain
+- [ ] `GameChain` class implementato
 - [ ] LIFO resolution
-- [ ] Stack size limit (10)
-- [ ] Burst speed implementation
+- [ ] Pass priority tracking
+- [ ] Cleanup dopo ogni risoluzione
 
-#### 6.2 Action Speed System
-- [ ] `ActionSpeed` enum (Burst, Fast, Slow, Focus)
-- [ ] Validation per speed rules
-- [ ] Test per spell speed interaction
+#### 6.2 Card Timing System
+- [ ] `CardTiming` enum (Default, Action, Reaction)
+- [ ] Validation per timing rules
+- [ ] Test per timing interaction (es: Reaction in Closed State)
 
-#### 6.3 Timing & Priority
-- [ ] Timing layers implementation
-- [ ] Tie-breaking rules (active player, timestamp, position)
-- [ ] Simultaneous action resolution
-- [ ] Test per ordering complesso
+#### 6.3 Priority & Focus
+- [ ] `PriorityManager` class
+- [ ] Priority durante Neutral Open (Turn Player)
+- [ ] Focus durante Showdown
+- [ ] Relevant Players determination
+- [ ] Tie-breaking rules (Turn Order)
 
-**Deliverable:** Stack system completo, risoluzione deterministica
+#### 6.4 Turn States
+- [ ] `TurnState` enum (Neutral Open/Closed, Showdown Open/Closed)
+- [ ] State transitions (Open ↔ Closed)
+- [ ] Test per state-based restrictions
+
+**Deliverable:** Chain system completo, Priority/Focus funzionante, risoluzione deterministica
 
 ---
 
@@ -2428,137 +2745,130 @@ Implementa i trigger più comuni:
 
 ## Esempi Pratici
 
-### Scenario 1: Spell Damage Chain
+### Scenario 1: Combat con Tank e Modifier
 
 **Setup:**
-- Player ha in campo "Spell Damage +1"
-- Player gioca "Inferno Blast" (3 danni)
-- Target ha "Barriera"
+- Attacker ha 2 unità (3 Might, 2 Might) + "Combat Damage +1" buff
+- Defender ha 1 Tank (4 Might) e 1 unità normale (2 Might)
 
 **Flow:**
 
 ```typescript
-// 1. Script crea action
-const action = new DealDamageAction(player, {
-  source: infernoBlast,
-  target: enemyUnit,
-  amount: 3,
-  damageType: 'spell',
+// 1. Combat inizia → Crea ResolveCombatAction
+const combatAction = new ResolveCombatAction(attacker, {
+  attackers: [unit3Might, unit2Might],
+  defenders: [tankUnit, normalUnit],
+  battlefield: contestedBattlefield,
 });
 
-// 2. Execute action
-await game.actions.execute(action);
-
-// 3. PIPELINE:
-
-// 3a. Validation
-✅ Target è valido
-✅ Source può infliggere danno
-
-// 3b. Modifiers (in ordine di priority)
-
-// Modifier 1: SpellDamagePlusOneModifier (priority: 0)
-action.data.amount = 3 + 1 = 4
-
-// Modifier 2: BarrierModifier (priority: -25, più alta!)
-return null; // PREVIENE COMPLETAMENTE
-
-// 3c. Execution
-// Action è null → nessun danno inflitto
-
-// 3d. Triggers
-// Nessun trigger perché action prevenuta
-
-// 3e. History
-game.history.push({
-  type: 'DAMAGE_PREVENTED',
-  source: infernoBlast,
-  target: enemyUnit,
-  originalAmount: 4,
-  reason: 'barrier',
-});
-```
-
-**Risultato:** Danno prevenuto, barriera consumata, target a 0 danni
-
----
-
-### Scenario 2: Yasuo Trigger Chain
-
-**Setup:**
-- Player ha Yasuo in campo
-- Player gioca "Stun Spell" su nemico
-- Nemico ha 2 HP
-
-**Flow:**
-
-```typescript
-// 1. Script crea stun action
-const stunAction = new StunUnitAction(player, {
-  source: stunSpell,
-  target: enemyUnit,
-  duration: 1,
-});
-
-await game.actions.execute(stunAction);
+await game.actions.execute(combatAction);
 
 // 2. PIPELINE:
 
 // 2a. Validation ✅
-// 2b. Modifiers (nessuno)
+
+// 2b. Modifiers
+// CombatDamageModifier applica +1 a attacker
+attackerTotalMight = (3 + 2) + 1 = 6
+
 // 2c. Execution
-enemyUnit.stunned = true;
 
-// 2d. Triggers
-// YasuoStunTrigger si attiva!
-const yasuoTrigger = new YasuoStunTrigger(yasuo);
-const triggeredActions = yasuoTrigger.onAction(stunAction, game);
+// Attacker distribuisce 6 danno:
+// Tank DEVE ricevere danno letale per primo
+tankUnit.damage = 4 (lethal)
+normalUnit.damage = 2 (lethal)
 
-// Trigger genera DealDamageAction(2)
-const damagAction = new DealDamageAction(player, {
-  source: yasuo,
-  target: enemyUnit,
-  amount: 2,
-  damageType: 'effect',
+// Defender distribuisce 6 danno:
+unit3Might.damage = 3 (lethal)
+unit2Might.damage = 2 (lethal)
+
+// 2d. Cleanup dopo combat
+// TUTTE le unità muoiono (tutte hanno danno letale)
+
+// 2e. Verifica Conquer
+// Nessuna unità rimasta → no Conquer
+
+// 2f. History
+game.history.push({
+  type: 'COMBAT_RESOLVED',
+  battlefield: contestedBattlefield,
+  attackerDamage: 6,
+  defenderDamage: 6,
+  casualties: [unit3Might, unit2Might, tankUnit, normalUnit],
 });
-
-// 3. Execute triggered action (RICORSIVO)
-await game.actions.execute(damageAction);
-
-// 3a. Validation ✅
-// 3b. Modifiers (nessuno applicabile)
-// 3c. Execution
-enemyUnit.damage += 2; // 0 → 2
-
-// 3d. Death check
-enemyUnit.health = 2, damage = 2 → DIES
-
-// 3e. Execute death action
-const deathAction = new UnitDiesAction(player, {
-  unit: enemyUnit,
-});
-
-await game.actions.execute(deathAction);
-
-// 4. Move to trash, trigger deathrattle, etc...
 ```
 
-**Risultato:** Nemico stunnato → Yasuo infligge 2 → Nemico muore
+**Risultato:** Tutte le unità muoiono, nessun Conquer
 
 ---
 
-### Scenario 3: Multiple Modifier Interaction
+### Scenario 2: Triggered Ability durante Showdown
 
 **Setup:**
-- Player ha "+1 Spell Damage"
-- Player ha "Double Damage (next)"
-- Player gioca "Fireball" (3 danni)
+- Player ha unità con "When I attack: deal 1 damage to defending player"
+- Player muove unità su battlefield nemico (inizia Showdown)
+
+**Flow:**
+
+```typescript
+// 1. Move completo → Cleanup → Combat inizia
+
+// 2. Combat Showdown Step
+// Si crea Initial Chain con trigger "When I attack"
+
+const attackTrigger = new WhenAttackTrigger(attackingUnit);
+const triggerAction = new DealDamageAction(player, {
+  source: attackingUnit,
+  target: defendingPlayer, // Danno al player, non unità
+  amount: 1,
+  damageType: 'effect',
+});
+
+// 3. Initial Chain viene popolata
+game.chain.add(triggerAction, CardTiming.ACTION);
+
+// 4. Showdown procede
+// Priority al defender (può giocare spell con Action/Reaction)
+
+// 5. Defender gioca "Shield Spell" (Reaction)
+const shieldAction = new ApplyBuffAction(defender, {
+  target: defendingUnit,
+  modifier: { deflect: 1 }, // Keyword Deflect
+});
+
+game.chain.add(shieldAction, CardTiming.REACTION);
+
+// 6. Passa priority → Chain risolve
+
+// 6a. Shield Spell risolve per primo (LIFO)
+defendingUnit.keywords.push('Deflect');
+
+// 6b. Cleanup
+
+// 6c. Trigger risolve
+defendingPlayer.health -= 1;
+
+// 6d. Cleanup
+
+// 7. Chain vuota → Focus passa → Combat Damage Step
+```
+
+**Risultato:** Defender subisce 1 danno, unità difensiva ottiene Deflect, poi combat normale
+
+---
+
+### Scenario 3: Multiple Modifier con Priority
+
+**Setup:**
+- Player ha "Spell Damage +1"
+- Player ha "Double Next Damage"
+- Player gioca spell da 3 danni
 
 **Flow:**
 
 ```typescript
 const action = new DealDamageAction(player, {
-  source: fireball,
+  source: spell,
   target: enemy,
   amount: 3,
   damageType: 'spell',
@@ -2566,17 +2876,65 @@ const action = new DealDamageAction(player, {
 
 // MODIFIERS (in priority order):
 
-// 1. SpellDamagePlusOneModifier (priority: 0)
+// 1. SpellDamagePlusOneModifier (priority: DAMAGE_MODIFICATION = 0)
 action.data.amount = 3 + 1 = 4
 
-// 2. DoubleDamageModifier (priority: 1, DOPO +1)
+// 2. DoubleDamageModifier (priority: DAMAGE_MODIFICATION + 1 = 1)
+// Più alto = esegue DOPO +1
 action.data.amount = 4 * 2 = 8
 
 // EXECUTION:
 enemy.damage += 8;
+
+// Il DoubleDamageModifier si consuma (one-shot)
+modifierRegistry.unregister(doubleDamageModifier);
 ```
 
-**Risultato:** 3 → +1 → ×2 = 8 danni (ordine corretto!)
+**Risultato:** 3 → +1 → ×2 = 8 danni (ordine corretto per priority!)
+
+---
+
+### Scenario 4: Rune Pool e Add Reaction
+
+**Setup:**
+- Player ha 2 Energy in Rune Pool
+- Player vuole giocare spell da 4 Energy
+- Player ha runa ready con "[T]: Add [1] Energy"
+
+**Flow:**
+
+```typescript
+// 1. Player dichiara PlayCardAction
+const playAction = new PlayCardAction(player, {
+  card: expensiveSpell, // Cost: 4 Energy
+  targets: [enemy],
+});
+
+// 2. Validation → Check costo
+// Available: 2 Energy
+// Required: 4 Energy
+// Shortfall: 2 Energy
+
+// 3. Add Reaction window si apre
+// Player può attivare abilità Add per colmare il gap
+
+// Player tappa 2 rune
+await game.actions.execute(new TapRuneAction(player, { rune: rune1 }));
+await game.actions.execute(new TapRuneAction(player, { rune: rune2 }));
+
+// Ogni TapRuneAction esegue:
+player.runePool.energy += 1;
+
+// 4. Ora Rune Pool ha 4 Energy → Validation passa
+
+// 5. Paga costo
+player.runePool.energy -= 4; // 4 → 0
+
+// 6. Spell va sulla Chain
+game.chain.add(playAction, CardTiming.DEFAULT);
+```
+
+**Risultato:** Player usa Add Reactions per pagare costo, spell giocato con successo
 
 ---
 

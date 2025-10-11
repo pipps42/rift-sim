@@ -1,0 +1,14 @@
+Brazen Buccaneer
+Unit
+Common
+Fury
+Bilgewater
+Pirate
+Energy
+6
+Power
+0
+Might
+5
+Description
+As you play me, you may discard a card as an additional cost. If you do, reduce my cost by 2.

@@ -12,6 +12,7 @@ import {
 import { eventBus, GameEventFactory } from '../events';
 import { logger } from '@/utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { createGameCard } from '@/utils/cardHelpers';
 
 /**
  * Handles initial game setup according to Riftbound rules
@@ -76,17 +77,8 @@ export class GameSetup {
     for (const player of game.players) {
       if (player.chosenChampion) {
         // Move Chosen Champion to Champion Zone
-        const championCard: GameCard = {
-          instanceId: uuidv4(),
-          cardId: player.chosenChampion.id,
-          controllerId: player.id,
-          ownerId: player.id,
-          zone: 'champion',
-          ready: true,
-          damage: 0,
-          temporaryModifiers: [],
-          counters: []
-        };
+        const championCard = createGameCard(player.chosenChampion, player, 'champion');
+        championCard.ready = true; // Champions start ready
 
         player.zones.championZone.push(championCard);
         logger.debug(`GameSetup: Placed ${player.chosenChampion.name} in Champion Zone for ${player.name}`);
@@ -119,6 +111,7 @@ export class GameSetup {
           scoreValue: 1
         },
         units: [],
+        sides: {}, // Units organized by controlling player
         contested: false,
         facedownCards: []
       };
@@ -227,20 +220,4 @@ export class GameSetup {
     }
   }
 
-  /**
-   * Create a game card instance
-   */
-  private createGameCard(cardId: string, controllerId: string, ownerId: string, zone: string): GameCard {
-    return {
-      instanceId: uuidv4(),
-      cardId,
-      controllerId,
-      ownerId,
-      zone,
-      ready: false, // Cards enter exhausted by default (except with Accelerate)
-      damage: 0,
-      temporaryModifiers: [],
-      counters: []
-    };
-  }
 }

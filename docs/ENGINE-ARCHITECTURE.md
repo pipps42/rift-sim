@@ -117,6 +117,131 @@ class TurnManager {
 }
 ```
 
+### 2.1. V3 GameAction System ⭐ NEW
+
+The V3 GameAction system provides a declarative, LoR-inspired action pipeline with modifiers and triggers.
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      CARD SCRIPTS                            │
+│  Scripts declare INTENTIONS, not mutations                  │
+│  e.g., "Deal 3 damage to target unit"                      │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ Creates GameAction
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   GAMEACTION PIPELINE                        │
+│  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌──────────────┐  │
+│  │ VALIDATE│→ │ MODIFIERS│→ │ EXECUTE │→ │   TRIGGERS   │  │
+│  └─────────┘  └──────────┘  └─────────┘  └──────────────┘  │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ Modified action + consequences
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      GAME STATE                              │
+│  State mutated only here, in controlled manner              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+
+```typescript
+// Action Executor - 7-phase pipeline
+class ActionExecutor {
+  private game: Game;
+  private modifierRegistry: ModifierRegistry;
+  private triggerRegistry: TriggerRegistry;
+
+  async execute(action: GameAction): Promise<ActionExecutionResult> {
+    // Phase 1: Validation
+    // Phase 2: Apply Modifiers (can modify/replace/prevent action)
+    // Phase 3: Execute
+    // Phase 4: History Logging
+    // Phase 5: Trigger Resolution
+    // Phase 6: Side Effects (recursive)
+    // Phase 7: Cleanup (processDeaths, expire modifiers/triggers)
+  }
+}
+
+// Base Classes
+abstract class GameAction<TData> {
+  abstract validate(game: Game): ActionValidationResult;
+  abstract execute(game: Game): ActionExecutionResult;
+  abstract toHistoryEntry(): GameEvent;
+}
+
+abstract class ActionModifier {
+  abstract modify(action: GameAction, game: Game): Promise<GameAction | null>;
+  abstract isActive(game: Game): boolean;
+}
+
+abstract class ActionTrigger {
+  abstract shouldTrigger(action: GameAction, game: Game): Promise<boolean>;
+  abstract trigger(action: GameAction, game: Game): Promise<GameAction[]>;
+  abstract isActive(game: Game): boolean;
+}
+```
+
+**Implemented Actions:**
+- `DealDamageAction` - Deal damage to units (not players)
+- `DrawCardAction` - Draw cards from deck
+- `PlayCardAction` - Play a card with timing validation
+- `AddEnergyAction` - Add energy to rune pool
+- `AddPowerAction` - Add power to rune pool
+- `MoveUnitAction` - Move unit between battlefields
+
+**Implemented Modifiers:**
+- `DamageModifier` - Modify damage amounts (e.g., "+2 spell damage")
+- `CostModifier` - Modify card costs (e.g., "spells cost 1 less")
+- `DrawModifier` - Modify draw count (e.g., "draw 2 instead of 1")
+
+**Implemented Triggers:**
+- `OnDamageDealtTrigger` - React to damage dealt
+- `OnCardPlayedTrigger` - React to cards played
+- `OnUnitDeathTrigger` - React to unit deaths
+
+**Example Usage in Card Script:**
+```typescript
+// Card: "Arcane Amplifier - Your spells deal +2 damage"
+onPlay: (ctx) => {
+  ctx.modifierRegistry.register('deal_damage', new DamageModifier({
+    sourceCard: ctx.self,
+    damageModification: 2,
+    filter: (action) => action.data.damageType === 'spell',
+    expiresWhen: (game) => !isInPlay(ctx.self, game),
+  }));
+}
+
+// Card: "Vengeful Spirit - When this dies, deal 3 damage to all enemies"
+onPlay: (ctx) => {
+  ctx.triggerRegistry.register('unit_death', new OnUnitDeathTrigger({
+    sourceCard: ctx.self,
+    filter: (deadUnit) => deadUnit.instanceId === ctx.self.instanceId,
+    oneShot: true,
+    onTrigger: async (deadUnit, game) => {
+      const enemies = getEnemyUnits(game, ctx.controller.id);
+      return enemies.map(target =>
+        new DealDamageAction(ctx.controller, {
+          target,
+          amount: 3,
+          damageType: 'effect',
+        })
+      );
+    },
+  }));
+}
+```
+
+**Test Coverage:** 83/84 tests passing (98.8%)
+
+**Files:**
+- Base: `src/engine/actions/base/*.ts`
+- Core: `src/engine/actions/ActionExecutor.ts`, `ModifierRegistry.ts`, `TriggerRegistry.ts`
+- Concrete: `src/engine/actions/concrete/*.ts`
+- Modifiers: `src/engine/actions/modifiers/*.ts`
+- Triggers: `src/engine/actions/triggers/*.ts`
+
 ### 3. Rule Engine
 Validates actions and enforces Riftbound game rules.
 
@@ -269,9 +394,22 @@ class PriorityManager {
 }
 ```
 
-### 10. Effect System
-Manages all card effects, abilities, and triggers according to Riftbound mechanics.
+### 10. Effect System ⚠️ DEPRECATED
 
+**Status:** DEPRECATED - Use V3 Modifier System instead
+
+The EffectSystem was designed in Phase 1 before the V3 GameAction system was implemented. It has been superseded by the V3 ModifierRegistry and TriggerRegistry, which provide:
+- Better isolation and testability
+- Declarative modifier composition
+- Automatic cleanup and expiration
+- Type-safe action modification
+
+**Migration Path:**
+- Replace EffectSystem.resolveEffect() → Use GameAction execution
+- Replace EffectSystem.registerTrigger() → Use TriggerRegistry.register()
+- Replace direct state mutations → Use V3 Modifiers
+
+**Legacy API (do not use):**
 ```typescript
 class EffectSystem {
   private eventBus: EventBus;
@@ -293,9 +431,40 @@ class EffectSystem {
 }
 ```
 
-### 11. Event System
-Decoupled event-driven architecture for Riftbound game events.
+### 10a. Cleanup System ⚠️ DEPRECATED
 
+**Status:** DEPRECATED - Use V3 ActionExecutor Phase 7 instead
+
+The CleanupSystem was designed to handle end-of-turn and end-of-phase cleanup. This functionality has been integrated into the V3 ActionExecutor's Phase 7 (Cleanup), which provides:
+- Automatic death processing after actions complete
+- Modifier/trigger expiration checks
+- Unified cleanup pipeline
+
+**Migration Path:**
+- Replace CleanupSystem.performCleanup() → V3 ActionExecutor handles this automatically
+- Replace manual processDeaths() calls → Use V3 ActionExecutor Phase 7
+- Expiration logic → Implement in Modifier/Trigger `isActive()` methods
+
+---
+
+### 11. Event System ✅ KEPT (Infrastructure Only)
+
+**Status:** ACTIVE - Repurposed for cross-layer communication only
+
+The EventBus remains active but has a **redefined role**:
+
+**What EventBus IS for:**
+- UI updates and notifications
+- Analytics and telemetry
+- Logging and debugging
+- Cross-layer communication (e.g., notifying websocket layer of state changes)
+
+**What EventBus is NOT for:**
+- Game logic and rule enforcement (use V3 GameAction system)
+- Card triggers (use V3 TriggerRegistry)
+- State mutations (use V3 Actions)
+
+**API:**
 ```typescript
 class EventBus {
   private listeners: Map<EventType, EventListener[]> = new Map();
@@ -312,30 +481,30 @@ interface EventListener {
   callback: (event: GameEvent) => Promise<void>;
 }
 
-// Riftbound-specific events
+// Riftbound-specific events (infrastructure only - NOT for game logic!)
 enum RiftboundEventType {
-  // Phase events
+  // Phase events (for UI updates)
   AWAKEN_PHASE = 'awaken_phase',
   BEGINNING_PHASE = 'beginning_phase',
   CHANNEL_PHASE = 'channel_phase',
 
-  // Battlefield events
+  // Battlefield events (for UI updates)
   UNIT_MOVED = 'unit_moved',
   BATTLEFIELD_CONTESTED = 'battlefield_contested',
   BATTLEFIELD_SCORED = 'battlefield_scored',
 
-  // Combat events
+  // Combat events (for UI updates)
   SHOWDOWN_START = 'showdown_start',
   COMBAT_DAMAGE_DEALT = 'combat_damage_dealt',
   UNIT_MIGHT_REACHED = 'unit_might_reached',
 
-  // Resource events
+  // Resource events (for UI updates)
   RUNE_CHANNELED = 'rune_channeled',
   ENERGY_ADDED = 'energy_added',
   POWER_ADDED = 'power_added',
   RUNE_POOL_CLEARED = 'rune_pool_cleared',
 
-  // Special events
+  // Special events (for UI updates)
   BURN_OUT = 'burn_out',
   FINAL_POINT_ATTEMPT = 'final_point_attempt'
 }

@@ -323,12 +323,18 @@ export class EffectSystem {
 
   /**
    * Create token unit
+   * TODO: This needs a proper TokenCard definition to work with GameCard extends BaseCard
    */
   private async executeCreateTokenEffect(game: Game, effect: Effect, controllerId: string): Promise<void> {
     const player = game.players.find(p => p.id === controllerId);
     if (!player) return;
 
-    // Create token card
+    // TODO: Need token card definition to use createGameCard helper
+    // For now, throw error until we implement token system properly
+    throw new Error('Token creation not yet implemented - needs TokenCard definition');
+
+    /*
+    // OLD CODE - doesn't work with GameCard extends BaseCard
     const token: GameCard = {
       instanceId: uuidv4(),
       cardId: 'token-' + uuidv4(),
@@ -340,9 +346,7 @@ export class EffectSystem {
       temporaryModifiers: [],
       counters: []
     };
-
-    // Add to base
-    player.zones.base.push(token);
+    */
 
     logger.info(`EffectSystem: Created token for player ${controllerId}`);
   }

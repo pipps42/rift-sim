@@ -25,6 +25,7 @@ export interface Game {
   phase: GamePhase;
   turnState: TurnState;
   round: number;
+  currentTurn: number; // Absolute turn counter (increments every turn, starts at 1)
   winner?: string; // Player ID of winner
   status: GameStatus;
   battlefields: Battlefield[];
@@ -34,6 +35,7 @@ export interface Game {
   storage: CardStorage; // Card storage system for sharing data between cards
   history: GameEvent[]; // Game event history for replay/queries
   historyQuery: HistoryQueryAPI; // Helper API for common history queries
+  processDeaths?: () => Promise<void>; // State-based action to process unit deaths
   createdAt: Date;
   updatedAt: Date;
 }
@@ -236,7 +238,11 @@ export interface GlobalZones {
 export interface Battlefield {
   id: string;
   card: BattlefieldCard;
-  units: GameCard[]; // Units currently at this battlefield
+  units: GameCard[]; // All units at this battlefield (maintained for compatibility)
+  sides: {
+    // Units organized by controlling player for efficient access
+    [playerId: string]: GameCard[];
+  };
   controller?: string; // Player ID who controls this battlefield
   contested: boolean; // Status when units from different players arrive
   facedownCards: GameCard[]; // Hidden cards at this battlefield
@@ -358,6 +364,7 @@ export interface ChainItem {
   id: string;
   type: ChainItemType;
   sourceCardId?: string;
+  sourceCard?: GameCard; // Reference to the actual card (for counter spells to check costs)
   sourceAbilityId?: string;
   controllerId: string;
   targets: Target[];
@@ -676,17 +683,87 @@ export interface BurnOutEvent {
   timestamp: Date;
 }
 
-export interface GameCard {
+/**
+ * GameCard - Instance of a card in a game.
+ *
+ * Extends BaseCard to include all card definition properties (cardType, energyCost, domains, etc.)
+ * plus game-specific instance state (instanceId, controllerId, zone, ready, damage).
+ *
+ * This design allows card scripts to access card properties directly without lookups:
+ * - ctx.self.cardType (instead of lookup by cardId)
+ * - ctx.self.domains (instead of lookup by cardId)
+ * - ctx.self.energyCost (can be modified by cost reduction effects)
+ *
+ * Properties from BaseCard that can change during the game are redefined as mutable.
+ */
+export interface GameCard extends Omit<BaseCard, 'energyCost'> {
+  // ===== Instance Properties =====
   instanceId: string; // Unique instance in this game
-  cardId: string; // Reference to card definition
+  cardId: string; // Reference to original card definition
   controllerId: string;
   ownerId: string;
   zone: string;
   position?: number; // Position in zone if ordered
   ready: boolean; // Ready vs Exhausted state
   damage: number; // Current damage (only relevant in Board Zones)
+
+  // ===== Mutable Properties (can change during game) =====
+  energyCost: number; // Can be modified by cost reduction/increase effects
+  might?: number; // Optional - only present on units/champions, can be modified by buffs/debuffs
+
+  // ===== Temporary State =====
   temporaryModifiers: TemporaryModifier[];
   counters: Counter[];
+}
+
+/**
+ * Type guards for checking card types.
+ * These return boolean, not narrowed types, to avoid TypeScript conflicts.
+ * Cards have might? as optional property, so after checking isUnitCard(),
+ * you can safely access card.might with ?? operator for default value.
+ */
+
+/**
+ * Check if a GameCard is a unit or champion.
+ * Units have might property.
+ */
+export function isUnitCard(card: GameCard): boolean {
+  return card.cardType === 'unit' || card.cardType === 'champion';
+}
+
+/**
+ * Check if a GameCard is a spell.
+ */
+export function isSpellCard(card: GameCard): boolean {
+  return card.cardType === 'spell';
+}
+
+/**
+ * Check if a GameCard is a gear.
+ */
+export function isGearCard(card: GameCard): boolean {
+  return card.cardType === 'gear';
+}
+
+/**
+ * Check if a GameCard is a rune.
+ */
+export function isRuneCard(card: GameCard): boolean {
+  return card.cardType === 'rune';
+}
+
+/**
+ * Check if a GameCard is a legend.
+ */
+export function isLegendCard(card: GameCard): boolean {
+  return card.cardType === 'legend';
+}
+
+/**
+ * Check if a GameCard is a battlefield.
+ */
+export function isBattlefieldCard(card: GameCard): boolean {
+  return card.cardType === 'battlefield';
 }
 
 export interface TemporaryModifier {
