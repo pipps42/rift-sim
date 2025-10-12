@@ -11,6 +11,7 @@
  */
 
 import type { Game, GameCard, Player, Card } from '../../../types/game';
+import type { CardMetadata } from '../../scanning/types/ScanTypes';
 
 // ============================================================================
 // CARD CONTEXT
@@ -322,6 +323,19 @@ export interface CardScript {
    * Override might value (attack/power).
    */
   might?: number;
+
+  // -------------------------------------------------------------------------
+  // SCANNER METADATA (for CardStateScanner)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Metadata for CardStateScanner system.
+   * Defines cost modifiers, constraints, activated abilities, and reactive triggers.
+   * Used by the scanner to determine what actions are available without executing hooks.
+   *
+   * @see CardMetadata in src/engine/scanning/types/ScanTypes.ts
+   */
+  metadata?: CardMetadata;
 }
 
 // ============================================================================
