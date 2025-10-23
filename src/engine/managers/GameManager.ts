@@ -1,4 +1,4 @@
-import { Game, Player, Deck, GameStatus, GamePhase, TurnState } from '@/types/game';
+import { Game, Player, Deck, GameStatus, GamePhase, TurnState, GameCard } from '@/types/game';
 import { eventBus, GameEventFactory } from '../events';
 import { DeckValidator } from '../validators/DeckValidator';
 import { GameSetup } from '../setup/GameSetup';
@@ -6,6 +6,10 @@ import { logger } from '@/utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { CardStorage } from '../storage/CardStorage';
 import { HistoryQueryAPI } from '../history/HistoryQueryAPI';
+import { CardStateScanner } from '../scanning/CardStateScanner';
+import { CardScriptRuntime } from '../scripting/CardScriptRuntime';
+import { ModifierRegistry } from '../actions/ModifierRegistry';
+import type { ScanDelta, ActivatedAbilityInfo } from '../scanning/types/ScanTypes';
 
 /**
  * Central orchestrator for all Riftbound game operations
@@ -16,9 +20,33 @@ export class GameManager {
   private deckValidator: DeckValidator;
   private gameSetup: GameSetup;
 
+  // ⭐ NEW: Scanner system for card state tracking
+  private cardScriptRuntime: CardScriptRuntime;
+  private modifierRegistry: ModifierRegistry;
+  private scanners: Map<string, CardStateScanner> = new Map(); // One scanner per game
+
   constructor() {
     this.deckValidator = new DeckValidator();
     this.gameSetup = new GameSetup();
+
+    // Initialize card script runtime
+    this.cardScriptRuntime = new CardScriptRuntime({
+      scriptsDir: 'src/cards',
+      hotReload: false,
+      debug: false,
+      timeout: 5000,
+    });
+
+    // Initialize modifier registry (global for now, could be per-game)
+    this.modifierRegistry = new ModifierRegistry();
+  }
+
+  /**
+   * Initialize the runtime (load scripts)
+   */
+  async initialize(): Promise<void> {
+    await this.cardScriptRuntime.initialize();
+    logger.info('GameManager: CardScriptRuntime initialized');
   }
 
   /**
@@ -69,6 +97,10 @@ export class GameManager {
 
     // Store game
     this.games.set(game.id, game);
+
+    // ⭐ NEW: Create scanner for this game
+    const scanner = new CardStateScanner(this.cardScriptRuntime, this.modifierRegistry);
+    this.scanners.set(game.id, scanner);
 
     logger.info(`GameManager: Created game ${game.id} with players ${players.map(p => p.name).join(', ')}`);
 
@@ -154,6 +186,9 @@ export class GameManager {
 
     // Emit game end event
     await eventBus.emit(GameEventFactory.createGameEndEvent(gameId, winnerId || '', reason));
+
+    // ⭐ Clean up scanner
+    this.scanners.delete(gameId);
 
     // Clean up game after some time (placeholder for proper cleanup)
     setTimeout(() => {
@@ -267,6 +302,227 @@ export class GameManager {
     }
 
     Object.assign(game, updates, { updatedAt: new Date() });
+
+    // ⭐ Trigger state scan after update
+    this.onStateChanged(game).catch(err => {
+      logger.error(`GameManager: Error scanning state after update:`, err);
+    });
+  }
+
+  // ============================================================================
+  // ⭐ NEW: CardStateScanner Integration
+  // ============================================================================
+
+  /**
+   * Called after any state change to scan cards and notify UI
+   */
+  private async onStateChanged(game: Game): Promise<void> {
+    const scanner = this.scanners.get(game.id);
+    if (!scanner) {
+      logger.warn(`GameManager: No scanner found for game ${game.id}`);
+      return;
+    }
+
+    try {
+      const delta = await scanner.scanGameState(game);
+
+      if (delta.changed && delta.changes) {
+        logger.debug(`GameManager: State scan found ${delta.changes.length} changes in game ${game.id}`);
+
+        // TODO: Notify UI/clients about changes
+        // For now, just log
+        for (const change of delta.changes) {
+          logger.debug(`  - ${change.type}: ${change.card.name}`);
+        }
+      }
+    } catch (error) {
+      logger.error(`GameManager: Error during state scan:`, error);
+    }
+  }
+
+  /**
+   * Get scanner for a game (for external queries)
+   */
+  getScanner(gameId: string): CardStateScanner | undefined {
+    return this.scanners.get(gameId);
+  }
+
+  /**
+   * Query which cards are playable for a player
+   */
+  getPlayableCards(gameId: string, playerId: string): GameCard[] {
+    const scanner = this.scanners.get(gameId);
+    if (!scanner) {
+      return [];
+    }
+
+    const results = scanner.getPlayableCards(playerId);
+    return results.map(r => r.card);
+  }
+
+  /**
+   * Query which cards have activatable abilities for a player
+   */
+  getActivatableCards(gameId: string, playerId: string): Array<{
+    card: GameCard;
+    abilities: ActivatedAbilityInfo[];
+  }> {
+    const scanner = this.scanners.get(gameId);
+    if (!scanner) {
+      return [];
+    }
+
+    const results = scanner.getActivatableCards(playerId);
+    return results.map(r => ({
+      card: r.card,
+      abilities: r.abilities,
+    }));
+  }
+
+  /**
+   * ⭐ NEW: Activate an ability on a card
+   *
+   * This is called by the UI/controller when a player wants to activate an ability
+   * (e.g., HIDDEN keyword, Phoenix resurrection, etc.)
+   */
+  async activateAbility(
+    gameId: string,
+    playerId: string,
+    cardInstanceId: string,
+    abilityId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const game = this.games.get(gameId);
+    if (!game) {
+      return { success: false, error: `Game ${gameId} not found` };
+    }
+
+    const scanner = this.scanners.get(gameId);
+    if (!scanner) {
+      return { success: false, error: 'Scanner not initialized' };
+    }
+
+    try {
+      // Find the card in game
+      const card = this.findCardInGame(game, cardInstanceId);
+      if (!card) {
+        return { success: false, error: `Card ${cardInstanceId} not found` };
+      }
+
+      // Get card state from scanner
+      const cardState = scanner.getCardState(cardInstanceId);
+      if (!cardState) {
+        return { success: false, error: 'Card state not found' };
+      }
+
+      // Find the ability
+      const ability = cardState.abilities.find(a => a.id === abilityId);
+      if (!ability) {
+        return { success: false, error: `Ability ${abilityId} not found on card` };
+      }
+
+      // Check if ability can be activated
+      if (!ability.canActivate) {
+        return { success: false, error: ability.reason ?? 'Cannot activate ability' };
+      }
+
+      // Verify player ownership
+      if (card.ownerId !== playerId) {
+        return { success: false, error: 'You do not own this card' };
+      }
+
+      // Pay costs
+      const player = game.players.find(p => p.id === playerId);
+      if (!player) {
+        return { success: false, error: 'Player not found' };
+      }
+
+      if (ability.costs) {
+        // Check and pay energy cost
+        if (ability.costs.energy !== undefined) {
+          if (player.runePool.energy < ability.costs.energy) {
+            return { success: false, error: `Not enough energy (need ${ability.costs.energy})` };
+          }
+          player.runePool.energy -= ability.costs.energy;
+        }
+
+        // Check and pay power costs
+        if (ability.costs.power) {
+          for (const pc of ability.costs.power) {
+            const pool = player.runePool.power.find(p => p.domain === pc.domain);
+            if (!pool || pool.amount < pc.amount) {
+              return { success: false, error: `Not enough ${pc.domain} power (need ${pc.amount})` };
+            }
+            pool.amount -= pc.amount;
+          }
+        }
+      }
+
+      // Execute ability
+      // TODO: Build proper CardContext and execute ability.onActivate()
+      logger.info(`GameManager: Activated ability ${abilityId} on card ${card.name} for player ${playerId}`);
+
+      // Trigger state change
+      game.updatedAt = new Date();
+      await this.onStateChanged(game);
+
+      return { success: true };
+    } catch (error) {
+      logger.error(`GameManager: Error activating ability:`, error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * Find a card anywhere in the game by instance ID
+   */
+  private findCardInGame(game: Game, instanceId: string): GameCard | undefined {
+    // Check all player zones
+    for (const player of game.players) {
+      const zones = [
+        player.zones.hand,
+        player.zones.mainDeck,
+        player.zones.trash,
+        player.zones.runeDeck,
+        player.zones.runes,
+        player.zones.base,
+        player.zones.championZone,
+        player.zones.banishment,
+      ];
+
+      for (const zone of zones) {
+        const found = zone.find(c => c.instanceId === instanceId);
+        if (found) return found;
+      }
+    }
+
+    // Check battlefields
+    for (const bf of game.battlefields) {
+      if (bf.units) {
+        const found = bf.units.find(c => c.instanceId === instanceId);
+        if (found) return found;
+      }
+
+      if (bf.sides) {
+        for (const side of Object.values(bf.sides)) {
+          const found = side.find(c => c.instanceId === instanceId);
+          if (found) return found;
+        }
+      }
+
+      if (bf.facedownCards) {
+        const found = bf.facedownCards.find(c => c.instanceId === instanceId);
+        if (found) return found;
+      }
+    }
+
+    // Check chain
+    for (const item of game.chain) {
+      if (item.sourceCard?.instanceId === instanceId) {
+        return item.sourceCard;
+      }
+    }
+
+    return undefined;
   }
 }
 
