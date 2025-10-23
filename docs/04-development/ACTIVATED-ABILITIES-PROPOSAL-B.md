@@ -757,24 +757,90 @@ class UIController {
 
 ## Implementation Tasks
 
-| Task | File | Effort |
-|------|------|--------|
-| 1. Scanner Core | CardStateScanner.ts | 8-10h |
-| 2. Metadata Types | CardScriptTypes.ts | 3-4h |
-| 3. Example Cards | *.card.ts | 2-3h |
-| 4. GameManager Integration | GameManager.ts | 3-4h |
-| 5. UI Notification System | UINotifier.ts | 2-3h |
-| **TOTAL** | | **18-24h** |
+| Task | File | Status | Effort |
+|------|------|--------|--------|
+| 1. Scanner Core | CardStateScanner.ts | ✅ DONE | 8-10h |
+| 2. Metadata Types | ScanTypes.ts, CardScriptTypes.ts | ✅ DONE | 3-4h |
+| 3. Example Cards | scanner-cards/*.card.ts | ✅ DONE | 2-3h |
+| 4. GameManager Integration | GameManager.ts | ✅ DONE | 3-4h |
+| 5. UI Notification System | UINotifier.ts | ⏳ TODO | 2-3h |
+| 6. Test Coverage | CardStateScanner.test.ts | ⏳ TODO | 4-6h |
+| **TOTAL** | | **~70% Complete** | **22-30h** |
 
 ---
 
-## Open Questions
+## ✅ Implementation Status (2025-10-11)
 
-1. **Scan frequency** - After every action? Every N actions? On-demand only?
-2. **Zone filtering** - Do we scan cards in deck? Or only visible zones?
-3. **Trigger execution** - Should scanner auto-execute triggers, or just report them?
-4. **Error handling** - What if constraint check throws?
-5. **Testing** - How to test that scanner catches all edge cases?
+### Completed
+
+1. **CardStateScanner** - Full implementation with all scanning logic
+   - File: `src/engine/scanning/CardStateScanner.ts` (570 lines)
+   - Features: State hashing, delta calculation, constraint checking, cost calculation
+
+2. **Type System** - Complete type definitions
+   - File: `src/engine/scanning/types/ScanTypes.ts` (345 lines)
+   - All interfaces for metadata, constraints, abilities, triggers
+
+3. **CardScript Extension** - Metadata field added
+   - File: `src/engine/scripting/types/CardScriptTypes.ts`
+   - Added `metadata?: CardMetadata` to CardScript interface
+
+4. **Example Cards** - 4 demonstration cards
+   - HIDDEN keyword (unit-with-hidden.card.ts)
+   - Phoenix resurrection (phoenix-resurrection.card.ts)
+   - Dynamic cost reduction (dynamic-cost-spell.card.ts)
+   - Additional costs (additional-cost-spell.card.ts)
+
+5. **GameManager Integration** - Complete integration
+   - Scanner instance per game
+   - `onStateChanged(game)` - Triggers scan after updates
+   - `activateAbility()` - Execute activated abilities
+   - `getPlayableCards()` - Query playable cards
+   - `getActivatableCards()` - Query activatable abilities
+   - `findCardInGame()` - Utility to find cards anywhere
+
+### Integration Details
+
+```typescript
+// GameManager now has:
+private scanners: Map<string, CardStateScanner> = new Map();
+
+// Created when game is created
+async createGame(...) {
+  const scanner = new CardStateScanner(scriptRuntime, modifierRegistry);
+  this.scanners.set(game.id, scanner);
+}
+
+// Called after any state mutation
+private async onStateChanged(game: Game) {
+  const delta = await scanner.scanGameState(game);
+  if (delta.changed) {
+    // Log changes (TODO: notify UI via WebSocket)
+  }
+}
+
+// Public API
+getPlayableCards(gameId, playerId): GameCard[]
+getActivatableCards(gameId, playerId): { card, abilities }[]
+activateAbility(gameId, playerId, cardId, abilityId): Promise<Result>
+```
+
+### TODO
+
+1. **UI Notification System** - WebSocket/event-based notification
+2. **Test Coverage** - Unit and integration tests
+3. **Performance Optimization** - Delta scanning, zone filtering
+4. **Ability Execution** - Complete `onActivate` execution with CardContext
+
+---
+
+## Resolved Questions
+
+1. **Scan frequency** - ✅ After every `updateGame()` call
+2. **Zone filtering** - ✅ Scan all zones for now (optimization later)
+3. **Trigger execution** - ✅ Scanner only reports, doesn't execute
+4. **Error handling** - ✅ Try-catch per card, continue scanning others
+5. **Testing** - ⏳ Integration tests pending
 
 ---
 

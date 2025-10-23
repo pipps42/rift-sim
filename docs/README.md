@@ -1,195 +1,266 @@
-# Riftbound Simulator - Documentation
+# Riftbound Simulator - Documentazione
 
-## 📚 Documentation Overview
-
-This directory contains all technical documentation for the Riftbound TCG game engine.
-
----
-
-## 🎯 Start Here
-
-### For New Contributors
-1. **[RULES.md](./RULES.md)** - Learn the game rules (1v1 TCG mechanics)
-2. **[DEVELOPMENT-ROADMAP.md](./DEVELOPMENT-ROADMAP.md)** - Current status & next steps
-3. **[ENGINE-ARCHITECTURE.md](./ENGINE-ARCHITECTURE.md)** - How everything fits together
-
-### For Card Designers
-1. **[V3-CARD-SCRIPTING-GUIDE.md](./V3-CARD-SCRIPTING-GUIDE.md)** - How to write card scripts
-2. **[KEYWORDS.md](./KEYWORDS.md)** - Card keyword reference
-3. **[RULES.md](./RULES.md)** - Game rules for card design
-
-### For Engine Developers
-1. **[ENGINE-ARCHITECTURE.md](./ENGINE-ARCHITECTURE.md)** - Complete system architecture
-2. **[GAMEACTION-SYSTEM-DESIGN.md](./GAMEACTION-SYSTEM-DESIGN.md)** - V3 action pipeline deep dive
-3. **[TESTING-ROADMAP-UPDATED.md](./TESTING-ROADMAP-UPDATED.md)** - Test coverage status
+**Versione:** 2.0
+**Ultima revisione:** 2025-01-10
+**Completamento progetto:** ~72% core engine
 
 ---
 
-## 📖 Document Index
+## 🎯 Inizia Qui
 
-### Core Documentation
+### Per Nuovi Sviluppatori
+1. **[CLAUDE.md](../CLAUDE.md)** - Istruzioni per AI assistants e overview del progetto
+2. **[02-architecture/ENGINE-ARCHITECTURE.md](02-architecture/ENGINE-ARCHITECTURE.md)** - Architettura completa del sistema
+3. **[04-development/DEVELOPMENT-ROADMAP.md](04-development/DEVELOPMENT-ROADMAP.md)** - Stato attuale e priorità
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[DEVELOPMENT-ROADMAP.md](./DEVELOPMENT-ROADMAP.md)** | Project status, priorities, next steps | All |
-| **[ENGINE-ARCHITECTURE.md](./ENGINE-ARCHITECTURE.md)** | Complete architecture overview | Developers |
-| **[RULES.md](./RULES.md)** | Complete game rules | Card Designers, Developers |
+### Per Card Designers
+1. **[05-card-scripting/V3-CARD-SCRIPTING-GUIDE.md](05-card-scripting/V3-CARD-SCRIPTING-GUIDE.md)** - Come scrivere card scripts
+2. **[03-game-rules/KEYWORDS.md](03-game-rules/KEYWORDS.md)** - Reference delle keyword
+3. **[03-game-rules/RULES.md](03-game-rules/RULES.md)** - Regole complete del gioco
 
-### Technical Deep Dives
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[GAMEACTION-SYSTEM-DESIGN.md](./GAMEACTION-SYSTEM-DESIGN.md)** | V3 GameAction System internals | Engine Developers |
-| **[V3-CARD-SCRIPTING-GUIDE.md](./V3-CARD-SCRIPTING-GUIDE.md)** | How to write V3 card scripts | Card Designers |
-| **[TESTING-ROADMAP-UPDATED.md](./TESTING-ROADMAP-UPDATED.md)** | Test coverage & testing strategy | QA, Developers |
-
-### Reference
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[KEYWORDS.md](./KEYWORDS.md)** | Card keyword definitions | Card Designers |
-| **[MODELS.md](./MODELS.md)** | Database schema reference | Backend Developers |
-| **[DATABASE_SETUP.md](./DATABASE_SETUP.md)** | How to setup local database | Developers |
+### Per Architect
+1. **[02-architecture/ENGINE-ARCHITECTURE.md](02-architecture/ENGINE-ARCHITECTURE.md)** - Sistema completo
+2. **[02-architecture/GAMEACTION-SYSTEM-DESIGN.md](02-architecture/GAMEACTION-SYSTEM-DESIGN.md)** - Deep dive V3 pipeline
+3. **[04-development/TESTING-ROADMAP-UPDATED.md](04-development/TESTING-ROADMAP-UPDATED.md)** - Coverage tests
 
 ---
 
-## 🗺️ Project Status Quick Reference
+## 📂 Struttura Documentale
 
-### ✅ What's Working
-- V3 GameAction System (98.8% tested)
-- V2 Card Scripting Runtime (87% tested)
-- Database & Prisma ORM
-- Core managers (GameManager, TurnManager, etc.)
-- Game setup & lifecycle
+### [01-getting-started/](01-getting-started/)
+*Onboarding per nuovi sviluppatori*
+- Quick start guide
+- Development environment setup
+- Project overview
 
-### 🚧 What's In Progress
-- **Integration Layer** (Phase 5.5)
-  - Connecting V2 Runtime → V3 Actions
-  - Player action implementation
-  - Chain system integration
+### [02-architecture/](02-architecture/)
+*Design e architettura del sistema*
+- **[ENGINE-ARCHITECTURE.md](02-architecture/ENGINE-ARCHITECTURE.md)** - Architettura completa ⭐
+- **[GAMEACTION-SYSTEM-DESIGN.md](02-architecture/GAMEACTION-SYSTEM-DESIGN.md)** - Sistema V3 GameAction ⭐
+- Documentazione CardStateScanner (integrato in ENGINE-ARCHITECTURE)
 
-### ❌ What's Missing
-- Player input handling (playCard, activateAbility)
-- Combat triggers (OnCombatStartTrigger)
-- Chain resolution with card scripts
-- Full end-to-end game loop
+**Sistemi Principali:**
+- V3 GameAction System (18 actions implementate, 98.8% test coverage)
+- CardStateScanner (scanner push-based per UI state)
+- CardScriptRuntime (V2 scripting system, 87% test coverage)
+- Managers (Game, Turn, Battlefield, Combat, Scoring, RunePool, Priority)
+- ChainSystem (spell/ability stack)
 
-**See [DEVELOPMENT-ROADMAP.md](./DEVELOPMENT-ROADMAP.md) for details.**
+### [03-game-rules/](03-game-rules/)
+*Regole del gioco Riftbound TCG*
+- **[RULES.md](03-game-rules/RULES.md)** - Regole complete
+- **[KEYWORDS.md](03-game-rules/KEYWORDS.md)** - Reference keyword (Assault, Shield, Ganking, etc.)
+
+### [04-development/](04-development/)
+*Roadmap, planning e task tracking*
+- **[DEVELOPMENT-ROADMAP.md](04-development/DEVELOPMENT-ROADMAP.md)** - Stato progetto e priorità ⭐
+- **[TESTING-ROADMAP-UPDATED.md](04-development/TESTING-ROADMAP-UPDATED.md)** - Test coverage e strategie
+- **[PLAYER-ACTIONS-ANALYSIS.md](04-development/PLAYER-ACTIONS-ANALYSIS.md)** - Piano implementazione player actions
+- **[ACTIVATED-ABILITIES-PROPOSAL-B.md](04-development/ACTIVATED-ABILITIES-PROPOSAL-B.md)** - Design CardStateScanner (implementato)
+
+### [05-card-scripting/](05-card-scripting/)
+*Guide per scrivere card scripts*
+- **[V3-CARD-SCRIPTING-GUIDE.md](05-card-scripting/V3-CARD-SCRIPTING-GUIDE.md)** - Guida completa V3 ⭐
+- API Reference per Actions, Modifiers, Triggers (vedere GAMEACTION-SYSTEM-DESIGN.md)
+
+### [06-reference/](06-reference/)
+*Reference tecnici*
+- **[MODELS.md](06-reference/MODELS.md)** - Schema database Prisma
+- **[DATABASE_SETUP.md](06-reference/DATABASE_SETUP.md)** - Setup database locale
+
+### [_archive/](_archive/)
+*Documenti storici e audit*
+- Audit architetturali
+- Vecchie versioni roadmap
+- Proposals archiviate
 
 ---
 
-## 🏗️ Architecture Overview
+## 📊 Stato del Progetto (Snapshot)
 
+### ✅ Sistemi Completati
+| Sistema | Coverage | Status |
+|---------|----------|--------|
+| V3 GameAction (18 actions) | 98.8% | ✅ Production Ready |
+| CardStateScanner | 100% impl | ✅ Integrated in GameManager |
+| CardScriptRuntime (V2) | 87% | ✅ Functional |
+| Database & Prisma ORM | 100% | ✅ Working |
+| Core Managers | 80-100% | ✅ Functional |
+
+### 🚧 In Progress (Phase 5.5 - Integration Layer)
+- **Player Actions Implementation** (playCard, standardMove, hideCard, passPriority)
+- CardScriptRuntime integration con lifecycle managers
+- ChainSystem integration per spell resolution
+- Combat triggers integration (OnCombatStartTrigger)
+- processDeaths integration con onDeath hooks
+
+### ❌ Not Started
+- WebSocket multiplayer (Phase 5.2-5.4)
+- REST API & Controllers (Phase 6)
+- AI opponents (Phase 7)
+- Performance optimization (Phase 8)
+
+**Dettagli completi:** [04-development/DEVELOPMENT-ROADMAP.md](04-development/DEVELOPMENT-ROADMAP.md)
+
+---
+
+## 🔧 Sistemi Chiave
+
+### V3 GameAction System
+**Status:** ✅ 98.8% tested, 18 actions implemented
+**Descrizione:** Pipeline dichiarativa per tutte le mutazioni di stato, ispirata a Legends of Runeterra.
+
+**7 Fasi:**
+1. Validation - Può essere eseguita?
+2. Modifiers - Applica modificatori (es. +2 damage)
+3. Execution - Esegui action modificata
+4. History - Log automatico in game history
+5. Triggers - Risoluzione trigger (es. "when unit dies")
+6. Side Effects - Esegui actions generate come side effects
+7. Cleanup - Cleanup quando stack torna a 0
+
+**18 Actions Disponibili:**
+- Core: DealDamage, Draw, PlayCard, AddEnergy, AddPower, MoveUnit, Heal
+- Card State: Discard, Exhaust, Ready, Recycle, Kill, Hide, Reveal, Banish
+- Special: ChannelRune, Stun, CounterSpell
+
+**Docs:** [02-architecture/GAMEACTION-SYSTEM-DESIGN.md](02-architecture/GAMEACTION-SYSTEM-DESIGN.md)
+
+### CardStateScanner
+**Status:** ✅ 100% implemented, integrated in GameManager
+**Descrizione:** Sistema push-based che determina UI state per tutte le carte.
+
+**Funzionalità:**
+- Determina quali carte sono giocabili (in mano)
+- Trova activated abilities disponibili (da qualsiasi zona)
+- Calcola costi effettivi (con modificatori)
+- Verifica play constraints (timing, risorse, condizioni custom)
+- Rileva pending triggers
+
+**Query API:**
+```typescript
+const playableCards = gameManager.getPlayableCards(gameId, playerId);
+const activatable = gameManager.getActivatableCards(gameId, playerId);
 ```
-┌─────────────────────────────────────────┐
-│         Player Input Layer              │  ← MISSING (Phase 5.5 Task 1)
-│  playCard(), move(), activateAbility()  │
-└────────────────┬────────────────────────┘
-                 │
-┌────────────────┴────────────────────────┐
-│           Game Managers                 │  ← Partially done
-│  GameManager, TurnManager, Combat, etc. │
-└────────────────┬────────────────────────┘
-                 │
-         ┌───────┴────────┐
-         │                │
-┌────────┴──────┐  ┌──────┴──────────────┐
-│ V2 Card       │  │ V3 GameAction       │  ← Both work perfectly
-│ Scripting     │──│ System              │     in isolation!
-│ Runtime       │  │ (Actions/Modifiers/ │
-└───────────────┘  │  Triggers)          │
-                   └─────────────────────┘
-                            │
-                   ┌────────┴─────────┐
-                   │   Game State     │
-                   │   (types/game.ts)│
-                   └──────────────────┘
+
+**Docs:** Sezione 2.2 in [02-architecture/ENGINE-ARCHITECTURE.md](02-architecture/ENGINE-ARCHITECTURE.md)
+
+### CardScriptRuntime (V2)
+**Status:** ✅ 87% tested, functional
+**Descrizione:** Sistema di esecuzione card scripts con hooks (onPlay, onDeath, onAttack, etc.)
+
+**Pattern di utilizzo:**
+```typescript
+export const myCard: CardScript = {
+  onPlay: async (ctx: CardContext) => {
+    // Usa V3 actions per mutazioni state
+    await ctx.actions.dealDamage(target, 3, 'effect');
+    await ctx.actions.draw(1);
+  }
+}
 ```
 
-**Problem**: The arrow between Managers → V2/V3 is missing!
+**Docs:** [05-card-scripting/V3-CARD-SCRIPTING-GUIDE.md](05-card-scripting/V3-CARD-SCRIPTING-GUIDE.md)
 
 ---
 
-## 🔍 Key Architecture Decisions
+## ⚠️ Sistemi Deprecated
 
-### 1. V3 GameAction System is Core
-All state mutations go through the V3 pipeline:
-- Validation → Modifiers → Execute → History → Triggers → Cleanup
-- Declarative actions (intentions, not mutations)
-- Fully tested, production-ready
+### EffectSystem
+**Status:** DEPRECATED - Non usare
+**Sostituto:** V3 ModifierRegistry + TriggerRegistry
+**Motivo:** V3 fornisce migliore isolamento, testabilità e composition
 
-### 2. V2 Card Scripts Bridge to V3
-Card scripts use V2 runtime (TypeScript execution) but:
-- Call V3 actions via `ctx.actions.*`
-- Register V3 modifiers via `ctx.modifiers.*`
-- Register V3 triggers via `ctx.triggers.*`
+### CleanupSystem
+**Status:** DEPRECATED - Non usare
+**Sostituto:** V3 ActionExecutor Phase 7 (Cleanup)
+**Motivo:** Cleanup integrato nella pipeline V3
 
-### 3. Deprecated Systems
-- **EffectSystem** → Use V3 Modifiers
-- **CleanupSystem** → Use V3 ActionExecutor Phase 7
-- **EventBus** → Keep for infrastructure only (logging, UI updates)
-
-### 4. Type System
-- `GameCard extends BaseCard` (might? optional)
-- Type guards: `isUnitCard()`, `isSpellCard()`, etc.
-- `CardContext` includes `opponent` for convenience
+### EventBus
+**Status:** ✅ KEPT ma repurposed
+**Nuovo ruolo:** Solo per infrastructure (UI updates, analytics, logging)
+**Non usare per:** Game logic, card triggers, state mutations (usa V3 Triggers)
 
 ---
 
-## 🚀 Getting Started
+## 🧪 Testing
 
-### Setup Development Environment
+**Overall:** 240/255 tests passing (94.1%)
+
+**Test Suites:**
+- V3 ActionExecutor: 15/16 (93.8%)
+- V3 ConcreteActions: 23/23 (100%)
+- V3 ConcreteModifiers: 24/24 (100%)
+- V3 ConcreteTriggers: 21/21 (100%)
+- CardScriptRuntime: 17/20 (85%)
+- Managers & Systems: ~60 tests
+
+**Dettagli:** [04-development/TESTING-ROADMAP-UPDATED.md](04-development/TESTING-ROADMAP-UPDATED.md)
+
+---
+
+## 🚀 Comandi Rapidi
 
 ```bash
-# Clone repo
-git clone <repo-url>
-cd riftbound-simulator
-
-# Install dependencies
+# Install
 npm install
 
-# Setup database
+# Database
 npm run db:generate
 npm run db:migrate
 npm run db:seed
 
-# Run tests
-npm test
-
-# Start dev server (when API ready)
+# Development
 npm run dev
+
+# Build
+npm run build
+
+# Tests
+npm test
+npm test -- <file-pattern>
+npm test -- --coverage
+
+# Format
+npm run format
 ```
-
-### Run Your First Card Script
-
-See [V3-CARD-SCRIPTING-GUIDE.md](./V3-CARD-SCRIPTING-GUIDE.md) for examples.
-
----
-
-## 📞 Need Help?
-
-1. Check [DEVELOPMENT-ROADMAP.md](./DEVELOPMENT-ROADMAP.md) for current status
-2. Read [ENGINE-ARCHITECTURE.md](./ENGINE-ARCHITECTURE.md) for system overview
-3. See [V3-CARD-SCRIPTING-GUIDE.md](./V3-CARD-SCRIPTING-GUIDE.md) for card examples
-4. Open an issue on GitHub (when project is public)
 
 ---
 
 ## 📝 Contributing
 
-### Documentation Style Guide
-- Use markdown with GitHub flavor
-- Include code examples where helpful
-- Keep examples up-to-date with codebase
-- Use emoji sparingly (headers only)
-- Date all status updates
+### Aggiornamento Documentazione
 
-### When to Update Docs
-- **DEVELOPMENT-ROADMAP.md**: After completing any task
-- **ENGINE-ARCHITECTURE.md**: After major architectural changes
-- **V3-CARD-SCRIPTING-GUIDE.md**: When adding new Actions/Modifiers/Triggers
-- **TESTING-ROADMAP-UPDATED.md**: After adding test suites
+Quando aggiornare i docs:
+- **DEVELOPMENT-ROADMAP.md**: Dopo completamento task
+- **ENGINE-ARCHITECTURE.md**: Dopo cambi architetturali
+- **V3-CARD-SCRIPTING-GUIDE.md**: Quando aggiungi Actions/Modifiers/Triggers
+- **TESTING-ROADMAP-UPDATED.md**: Dopo aggiunta test suites
+
+### Style Guide
+- Usa markdown GitHub-flavored
+- Includi esempi di codice dove utile
+- Mantieni esempi aggiornati con codebase
+- Data tutte le sezioni "Status" e "Last Updated"
+- Emoji solo negli headers (non nel corpo del testo)
 
 ---
 
-**Last Updated:** 2025-01-10
+## 📞 Help & Support
+
+**Per AI Assistants:**
+Leggi **[../CLAUDE.md](../CLAUDE.md)** per istruzioni complete
+
+**Per Sviluppatori:**
+1. Start from [DEVELOPMENT-ROADMAP.md](04-development/DEVELOPMENT-ROADMAP.md)
+2. Check [ENGINE-ARCHITECTURE.md](02-architecture/ENGINE-ARCHITECTURE.md) per design
+3. Read [V3-CARD-SCRIPTING-GUIDE.md](05-card-scripting/V3-CARD-SCRIPTING-GUIDE.md) per card scripting
+
+**Per Bug/Issues:**
+- Consulta test coverage in [TESTING-ROADMAP-UPDATED.md](04-development/TESTING-ROADMAP-UPDATED.md)
+- Verifica architectural decisions in [ENGINE-ARCHITECTURE.md](02-architecture/ENGINE-ARCHITECTURE.md)
+
+---
+
+**Ultimo Aggiornamento:** 2025-01-10
+**Prossima Revisione:** Dopo completamento Phase 5.5 Task 1

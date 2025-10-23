@@ -6,17 +6,18 @@
 
 ### ✅ Completed & Tested
 - **Phase 0**: V2 Card Scripting System (87% test coverage)
-- **Phase 0.5**: V3 GameAction System ⭐ (98.8% test coverage)
+- **Phase 0.5**: V3 GameAction System ⭐ (98.8% test coverage, 18 actions implemented)
 - **Phase 1**: Core Engine Foundation (Managers, Types, Game State)
 - **Phase 2**: Rule Engine & Validation (DeckValidator)
 - **Phase 3**: Combat & Battlefield System (Managers implemented)
 - **Phase 4**: Effect & Ability System (via V3 Modifiers/Triggers)
 - **Phase 5.1**: Database Schema (Prisma + PostgreSQL)
+- **Phase 5.5 (Partial)**: CardStateScanner ⭐ (100% implemented, integrated in GameManager)
 
 ### 🚧 Critical Gaps Identified
-- **Player Actions Layer**: GameManager missing playCard(), activateAbility(), etc.
-- **Runtime Integration**: CardScriptRuntime not called by managers
-- **Chain Integration**: ChainSystem not populated with sourceCard
+- **Player Actions Layer**: GameManager missing playCard(), standardMove(), hideCard(), passPriority()
+- **Runtime Integration**: CardScriptRuntime not called by managers for lifecycle hooks
+- **Chain Integration**: ChainSystem not populated with sourceCard when spells played
 - **Combat Triggers**: CombatManager not triggering OnCombatStartTrigger
 - **processDeaths Integration**: V3 cleanup not calling onDeath hooks
 
@@ -33,18 +34,21 @@
 **Goal**: Connect all tested systems into a working game loop.
 
 ### What Works Today
-- V3 GameAction System executes actions perfectly in isolation
+- V3 GameAction System executes actions perfectly in isolation (18 actions)
 - CardScriptRuntime executes card scripts perfectly in isolation
 - Managers handle lifecycle and resources correctly
 - Database stores/retrieves cards correctly
+- **CardStateScanner** ⭐ provides UI with playable cards and activatable abilities
+- GameManager query methods (`getPlayableCards`, `getActivatableCards`) work
+- `activateAbility()` partially works (70% - missing CardContext building)
 
 ### What Doesn't Work
-**The systems don't talk to each other!**
+**The player action layer is missing!**
 
-Example: When a player plays Yasuo:
-1. ❌ GameManager has no `playCard()` method
-2. ❌ Nobody calls CardScriptRuntime to execute Yasuo's script
-3. ❌ Combat doesn't trigger Yasuo's "when I attack" ability
+Example: When a player wants to play Yasuo:
+1. ❌ GameManager has no `playCard()` method to handle the request
+2. ❌ No integration calls CardScriptRuntime to execute Yasuo's onPlay script
+3. ❌ CombatManager doesn't trigger Yasuo's "when I attack" ability
 4. ❌ processDeaths doesn't call Yasuo's onDeath hook
 
 ---

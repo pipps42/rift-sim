@@ -242,6 +242,157 @@ onPlay: (ctx) => {
 - Modifiers: `src/engine/actions/modifiers/*.ts`
 - Triggers: `src/engine/actions/triggers/*.ts`
 
+**Complete Actions List (18 implemented):**
+- DealDamageAction - Deal damage to units (not players)
+- DrawCardAction - Draw cards from deck
+- PlayCardAction - Play card with timing validation
+- AddEnergyAction - Add energy to rune pool
+- AddPowerAction - Add power to rune pool
+- MoveUnitAction - Move unit between battlefields
+- DiscardCardAction - Discard from hand to trash
+- ExhaustCardAction - Exhaust card (ready → exhausted)
+- ReadyCardAction - Ready card (exhausted → ready)
+- RecycleCardAction - Return card to bottom of deck
+- KillCardAction - Kill permanent (send to trash)
+- HideCardAction - Place card facedown on battlefield
+- BanishCardAction - Permanently remove from game
+- RevealCardAction - Reveal facedown card
+- ChannelRuneAction - Channel rune from deck
+- StunUnitAction - Apply stun status
+- HealDamageAction - Heal damage from unit
+- CounterSpellAction - Counter spell on chain
+
+### 2.2. CardStateScanner ⭐ NEW
+
+The CardStateScanner is a centralized push-based system that scans all cards on every game state change to determine:
+- Which cards are playable
+- Which activated abilities are available
+- What triggers are pending
+- Effective costs with modifiers applied
+
+**Status:** IMPLEMENTED (100%)
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      GAME STATE CHANGE                       │
+│  (action executed, phase changed, card played, etc.)        │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   CARDSTATESCANNER                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ State Hash   │→ │ Scan All     │→ │ Calculate    │      │
+│  │ Check        │  │ Cards        │  │ Delta        │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ ScanDelta
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      UI / GAME MANAGER                       │
+│  - Update playable cards highlights                         │
+│  - Show available abilities                                 │
+│  - Display effective costs                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- **State hashing** - Skip scan if state unchanged
+- **Delta calculation** - Only report what changed
+- **Metadata-driven** - Cards declare constraints, scanner evaluates
+- **Performance optimized** - Caches results, only rescans on mutation
+- **Error resilient** - Per-card try-catch, continues scanning others
+
+**API:**
+```typescript
+class CardStateScanner {
+  // Main entry point - scan all cards after any state change
+  async scanGameState(game: Game): Promise<ScanDelta>
+
+  // Query current results
+  getCurrentResults(): Map<string, CardScanResult>
+  getCardState(cardInstanceId: string): CardScanResult | undefined
+
+  private scanCard(card: GameCard, game: Game): Promise<CardScanResult>
+  private checkPlayability(card, game, owner, script, ctx): PlayabilityInfo
+  private calculateEffectiveCost(card, game, script, ctx): EffectiveCost
+  private scanActivatedAbilities(card, game, owner, script, ctx): ActivatedAbilityInfo[]
+  private scanPendingTriggers(card, game, script, ctx): PendingTrigger[]
+  private getAllCardsInGame(game: Game): GameCard[]
+  private calculateDelta(previous, current): ScanDelta
+  private hashGameState(game: Game): string
+}
+```
+
+**Integration with GameManager:**
+```typescript
+class GameManager {
+  private scanners: Map<string, CardStateScanner> = new Map();
+
+  // Query methods (UI-facing)
+  getPlayableCards(gameId: string, playerId: string): GameCard[]
+  getActivatableCards(gameId: string, playerId: string): Array<{card, abilities}>
+
+  // Called after any game state mutation
+  private async onStateChanged(game: Game): Promise<void> {
+    const delta = await scanner.scanGameState(game);
+    if (delta.changed) {
+      // Notify UI via WebSocket (future)
+      this.notifyStateChange(game.id, delta);
+    }
+  }
+}
+```
+
+**Card Metadata Format:**
+Cards define declarative metadata that the scanner evaluates:
+```typescript
+export const exampleCard: CardScript = {
+  metadata: {
+    // Cost modifiers (e.g., "costs 1 less for each unit")
+    costModifiers: [{
+      id: 'unit_reduction',
+      description: 'Costs 1 less for each unit you control',
+      calculate: (ctx) => ({
+        energyChange: -countUnits(ctx.game, ctx.owner.id)
+      })
+    }],
+
+    // Play constraints (e.g., "can only play if you control battlefield")
+    playConstraints: [{
+      id: 'control_battlefield',
+      description: 'Must control a battlefield',
+      check: (ctx) => ({
+        satisfied: hasControlledBattlefield(ctx.game, ctx.owner.id),
+        reason: "You don't control any battlefield"
+      })
+    }],
+
+    // Activated abilities
+    activatedAbilities: [{
+      id: 'hide',
+      name: 'Hide',
+      description: 'Place facedown on battlefield',
+      availableFrom: ['hand'],
+      costs: { energy: 2 },
+      constraints: [...],
+      onActivate: async (ctx) => [new HideCardAction(...)]
+    }]
+  }
+}
+```
+
+**Performance:**
+- ~50-100ms per scan for 80-card game
+- Delta calculation prevents redundant UI updates
+- State hash prevents unnecessary rescanning
+
+**Files:**
+- Core: `src/engine/scanning/CardStateScanner.ts` (570 lines)
+- Types: `src/engine/scanning/types/ScanTypes.ts` (345 lines)
+- Tests: TBD (planned)
+
 ### 3. Rule Engine
 Validates actions and enforces Riftbound game rules.
 

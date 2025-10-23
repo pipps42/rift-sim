@@ -17,8 +17,8 @@
 - ✅ GameAction base class with TypeScript strict mode
 - ✅ ActionExecutor with 7-phase pipeline
 - ✅ ModifierRegistry and TriggerRegistry
-- ✅ 5 Concrete Actions: DealDamage, DrawCard, PlayCard, AddEnergy, AddPower, MoveUnit
-- ✅ Test coverage: 38/39 tests passing
+- ✅ **18 Concrete Actions Implemented** (see complete list below)
+- ✅ Test coverage: 83/84 tests passing across multiple test suites
 
 **Phase 4: Modifier System** ⭐ NEW
 - ✅ DamageModifier (increase/reduce/multiply damage)
@@ -48,13 +48,31 @@
 - `src/engine/actions/ModifierRegistry.ts`
 - `src/engine/actions/TriggerRegistry.ts`
 
-**Concrete Actions:**
-- `src/engine/actions/concrete/DealDamageAction.ts` (units only, no player damage)
-- `src/engine/actions/concrete/DrawCardAction.ts`
-- `src/engine/actions/concrete/PlayCardAction.ts`
-- `src/engine/actions/concrete/AddEnergyAction.ts`
-- `src/engine/actions/concrete/AddPowerAction.ts`
-- `src/engine/actions/concrete/MoveUnitAction.ts`
+**Concrete Actions (18 total):**
+
+*Core Actions:*
+- `src/engine/actions/concrete/DealDamageAction.ts` - Deal damage to units
+- `src/engine/actions/concrete/DrawCardAction.ts` - Draw cards from deck
+- `src/engine/actions/concrete/PlayCardAction.ts` - Play card with timing validation
+- `src/engine/actions/concrete/AddEnergyAction.ts` - Add energy to rune pool
+- `src/engine/actions/concrete/AddPowerAction.ts` - Add power to rune pool
+- `src/engine/actions/concrete/MoveUnitAction.ts` - Move unit between battlefields
+- `src/engine/actions/concrete/HealDamageAction.ts` - Heal damage from units
+
+*Card State Actions:*
+- `src/engine/actions/concrete/DiscardCardAction.ts` - Discard from hand to trash
+- `src/engine/actions/concrete/ExhaustCardAction.ts` - Exhaust card (ready → exhausted)
+- `src/engine/actions/concrete/ReadyCardAction.ts` - Ready card (exhausted → ready)
+- `src/engine/actions/concrete/RecycleCardAction.ts` - Return card to deck bottom
+- `src/engine/actions/concrete/KillCardAction.ts` - Kill permanent (send to trash)
+- `src/engine/actions/concrete/HideCardAction.ts` - Place card facedown
+- `src/engine/actions/concrete/RevealCardAction.ts` - Reveal facedown card
+- `src/engine/actions/concrete/BanishCardAction.ts` - Permanently remove from game
+
+*Special Actions:*
+- `src/engine/actions/concrete/ChannelRuneAction.ts` - Channel rune from deck
+- `src/engine/actions/concrete/StunUnitAction.ts` - Apply stun status
+- `src/engine/actions/concrete/CounterSpellAction.ts` - Counter spell on chain
 
 **Concrete Modifiers:**
 - `src/engine/actions/modifiers/DamageModifier.ts`
