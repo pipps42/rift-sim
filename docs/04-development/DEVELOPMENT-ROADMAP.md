@@ -57,7 +57,24 @@ Example: When a player wants to play Yasuo:
 
 **Estimated Effort:** 5-6 days
 **Priority:** CRITICAL
-**Status:** Not Started
+**Status:** In Progress (CardStateScanner DONE, Player Actions TODO)
+
+### ✅ Completed
+- **CardStateScanner System** (100%) - Provides UI with playable cards & activatable abilities
+- **GameManager Query Methods** - `getPlayableCards()`, `getActivatableCards()`, `activateAbility()` (70%)
+
+### ❌ Manager Integration Status
+
+| Manager | V3 Actions | V2 Scripts | Status |
+|---------|-----------|------------|--------|
+| **GameManager** | ⚠️ Partial | ⚠️ Partial | Scanner OK, missing playCard/standardMove/hideCard/passPriority |
+| **TurnManager** | ❌ None | ❌ None | Uses deprecated CleanupSystem, no hook calls, no V3 actions |
+| **CombatManager** | ❌ None | ❌ None | No V3 DealDamageAction, no onAttack hooks, no triggers |
+| **BattlefieldManager** | ❌ None | ❌ None | No V3 MoveUnitAction, no onEntersPlay hooks |
+| **ChainSystem** | ❌ None | ❌ None | sourceCard not populated, no spell script execution |
+| **RunePoolManager** | ✅ OK | N/A | Uses direct state mutations (not V3) - acceptable for resources |
+| **ScoringManager** | ✅ OK | N/A | Uses direct state mutations - acceptable |
+| **PriorityManager** | ✅ OK | N/A | Pure state management - acceptable |
 
 ### Task 1: Player Actions Implementation (2 days)
 
