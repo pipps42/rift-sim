@@ -15,10 +15,14 @@ export { MoveUnitAction } from './MoveUnitAction';
 // Resource actions
 export { AddEnergyAction } from './AddEnergyAction';
 export { AddPowerAction } from './AddPowerAction';
+export { SpendEnergyAction } from './SpendEnergyAction';
+export { SpendPowerAction } from './SpendPowerAction';
 
 // Card state actions
 export { ExhaustCardAction } from './ExhaustCardAction';
 export { ReadyCardAction } from './ReadyCardAction';
+export { ReadyAllCardsAction } from './ReadyAllCardsAction';
+export { RemoveAllDamageAction } from './RemoveAllDamageAction';
 
 // Card movement actions
 export { DiscardCardAction } from './DiscardCardAction';
@@ -48,3 +52,7 @@ export type { ChannelRuneData } from './ChannelRuneAction';
 export type { BanishCardData } from './BanishCardAction';
 export type { RevealCardData } from './RevealCardAction';
 export type { CounterSpellData } from './CounterSpellAction';
+export type { SpendEnergyActionData } from './SpendEnergyAction';
+export type { SpendPowerActionData } from './SpendPowerAction';
+export type { ReadyAllCardsActionData } from './ReadyAllCardsAction';
+export type { RemoveAllDamageActionData } from './RemoveAllDamageAction';

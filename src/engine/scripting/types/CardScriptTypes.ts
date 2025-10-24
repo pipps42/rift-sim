@@ -207,6 +207,12 @@ export interface CardScript {
    */
   onYourTurnEnd?: (ctx: CardContext) => Promise<void>;
 
+  /**
+   * Triggered when the game phase changes.
+   * EventData contains { from: GamePhase, to: GamePhase }
+   */
+  onPhaseChange?: (ctx: CardContext) => Promise<void>;
+
   // -------------------------------------------------------------------------
   // COMBAT HOOKS
   // -------------------------------------------------------------------------

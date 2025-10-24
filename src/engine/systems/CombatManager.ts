@@ -8,10 +8,12 @@ import {
   ShowdownState,
   GameCard,
   Keyword,
-  TurnState
+  TurnState,
+  Player
 } from '@/types/game';
 import { eventBus, GameEventFactory } from '../events';
 import { PriorityManager } from '../managers/PriorityManager';
+import { CardScriptRuntime } from '../scripting/CardScriptRuntime';
 import { logger } from '@/utils/logger';
 
 /**
@@ -26,9 +28,11 @@ import { logger } from '@/utils/logger';
  */
 export class CombatManager {
   private priorityManager: PriorityManager;
+  private scriptRuntime: CardScriptRuntime;
 
-  constructor(priorityManager: PriorityManager) {
+  constructor(priorityManager: PriorityManager, scriptRuntime?: CardScriptRuntime) {
     this.priorityManager = priorityManager;
+    this.scriptRuntime = scriptRuntime as CardScriptRuntime;
   }
 
   /**
@@ -142,8 +146,8 @@ export class CombatManager {
       return;
     }
 
-    // Get units for each side
-    const attackingUnits = this.prepareAttackingUnits(game, battlefield, attackingPlayer);
+    // Get units for each side (await for onAttack hooks)
+    const attackingUnits = await this.prepareAttackingUnits(game, battlefield, attackingPlayer);
     const defendingUnits = this.prepareDefendingUnits(game, battlefield, defendingPlayer);
 
     // Create combat state
@@ -353,12 +357,23 @@ export class CombatManager {
   }
 
   /**
-   * Prepare attacking units with combat bonuses
+   * Prepare attacking units with combat bonuses and execute onAttack hooks
    */
-  private prepareAttackingUnits(game: Game, battlefield: Battlefield, attackingPlayer: string): CombatUnit[] {
+  private async prepareAttackingUnits(game: Game, battlefield: Battlefield, attackingPlayer: string): Promise<CombatUnit[]> {
     const units = battlefield.units.filter(u => u.controllerId === attackingPlayer);
+    const combatUnits: CombatUnit[] = [];
 
-    return units.map(unit => {
+    // Execute onAttack hooks BEFORE calculating combat stats
+    // This allows cards like Yasuo to trigger effects "when I attack"
+    for (const unit of units) {
+      const owner = game.players.find(p => p.id === unit.controllerId);
+      if (owner) {
+        await this.executeOnAttackHook(game, owner, unit, battlefield);
+      }
+    }
+
+    // Now prepare combat stats
+    for (const unit of units) {
       const combatUnit: CombatUnit = {
         cardId: unit.cardId,
         might: this.getUnitMight(unit),
@@ -377,8 +392,10 @@ export class CombatManager {
         logger.debug(`CombatManager: Unit ${unit.instanceId} gains +${assaultBonus} from Assault`);
       }
 
-      return combatUnit;
-    });
+      combatUnits.push(combatUnit);
+    }
+
+    return combatUnits;
   }
 
   /**
@@ -502,5 +519,34 @@ export class CombatManager {
       defendTotal: game.combatState?.totalDefendingMight,
       combatStep: game.combatState?.step
     };
+  }
+
+  /**
+   * Execute onAttack hook for an attacking unit
+   */
+  private async executeOnAttackHook(
+    game: Game,
+    owner: Player,
+    unit: GameCard,
+    battlefield: Battlefield
+  ): Promise<void> {
+    // Skip hook execution if scriptRuntime not available
+    if (!this.scriptRuntime) {
+      return;
+    }
+
+    try {
+      // CardScriptRuntime.executeHook handles loading the script, checking the hook, and building context
+      await this.scriptRuntime.executeHook('onAttack', unit as any, game, {
+        eventData: {
+          targetBattlefield: battlefield.id,
+          defendingUnits: battlefield.units.filter(u => u.controllerId !== owner.id),
+        },
+      });
+      logger.debug(`CombatManager: Executed onAttack for ${unit.name}`);
+    } catch (error) {
+      // Script not found or hook failed - log warning but continue
+      logger.warn(`CombatManager: Failed to execute onAttack for card ${unit.cardId}:`, error);
+    }
   }
 }

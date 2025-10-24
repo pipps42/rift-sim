@@ -51,12 +51,10 @@ export class MoveUnitAction extends GameAction<MoveUnitActionData> {
   validate(game: Game): ActionValidationResult {
     const { unit, destination } = this.data;
 
-    // Validate unit exists and belongs to controller
-    const unitInstance = (this.controller as any).units?.find(
-      (u: any) => u.instanceId === unit.instanceId
-    );
+    // Get current location to verify unit exists and is controlled by player
+    const currentLocation = this.getUnitLocation(game, unit);
 
-    if (!unitInstance) {
+    if (!currentLocation) {
       return this.validationFailure('Unit not found or not controlled by player', {
         unitId: unit.instanceId,
       });
@@ -67,13 +65,6 @@ export class MoveUnitAction extends GameAction<MoveUnitActionData> {
       return this.validationFailure('Unit must be ready to move', {
         unitId: unit.instanceId,
       });
-    }
-
-    // Get current location
-    const currentLocation = this.getUnitLocation(game, unit);
-
-    if (!currentLocation) {
-      return this.validationFailure('Cannot determine unit location');
     }
 
     // Validate movement is legal
@@ -149,7 +140,7 @@ export class MoveUnitAction extends GameAction<MoveUnitActionData> {
     const player = this.controller as any;
 
     // Check if unit is at base
-    if (player.base?.units?.some((u: any) => u.instanceId === unit.instanceId)) {
+    if (player.zones?.base?.some((u: any) => u.instanceId === unit.instanceId)) {
       return { type: 'base' };
     }
 
@@ -213,12 +204,12 @@ export class MoveUnitAction extends GameAction<MoveUnitActionData> {
     const player = this.controller as any;
 
     // Try to remove from base
-    if (player.base?.units) {
-      const index = player.base.units.findIndex(
+    if (player.zones?.base) {
+      const index = player.zones.base.findIndex(
         (u: any) => u.instanceId === unit.instanceId
       );
       if (index !== -1) {
-        player.base.units.splice(index, 1);
+        player.zones.base.splice(index, 1);
         return;
       }
     }
@@ -250,13 +241,14 @@ export class MoveUnitAction extends GameAction<MoveUnitActionData> {
     const player = this.controller as any;
 
     if (destination.type === 'base') {
-      if (!player.base) {
-        player.base = { units: [] };
+      if (!player.zones) {
+        player.zones = { base: [] };
       }
-      if (!player.base.units) {
-        player.base.units = [];
+      if (!player.zones.base) {
+        player.zones.base = [];
       }
-      player.base.units.push(unit);
+      player.zones.base.push(unit);
+      (unit as any).zone = 'base';
 
     } else if (destination.type === 'battlefield' && destination.battlefieldId) {
       const battlefield = (game as any).battlefields?.find(
@@ -268,6 +260,7 @@ export class MoveUnitAction extends GameAction<MoveUnitActionData> {
           battlefield.units = [];
         }
         battlefield.units.push(unit);
+        (unit as any).zone = 'battlefield';
       }
     }
   }

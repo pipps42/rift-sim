@@ -21,6 +21,7 @@ import {
   CardTiming,
   TurnState,
 } from '../../../types/actions';
+import { CardType } from '../../../types/game';
 import type {
   ActionValidationResult,
   ActionExecutionResult,
@@ -56,7 +57,7 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
     const { card, targets } = this.data;
 
     // Validate card is in player's hand
-    const hand = (this.controller as any).hand || [];
+    const hand = this.controller.zones.hand || [];
     const cardInHand = hand.find((c: any) => c.instanceId === card.instanceId);
 
     if (!cardInHand) {
@@ -92,7 +93,7 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
 
     try {
       // 1. Remove card from hand
-      const hand = (this.controller as any).hand || [];
+      const hand = this.controller.zones.hand || [];
       const index = hand.findIndex((c: any) => c.instanceId === card.instanceId);
       if (index !== -1) {
         hand.splice(index, 1);
@@ -132,9 +133,10 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
    * @private
    */
   private validateTiming(game: Game, card: GameCard): ActionValidationResult {
-    const turnState = (game as any).turnState as TurnState;
+    const turnState = game.turnState as TurnState;
     const cardTiming = this.getCardTiming(card);
-    const isActivePlayer = (game as any).activePlayer?.id === this.controller.id;
+    const currentPlayer = game.players[game.currentPlayerIndex];
+    const isActivePlayer = currentPlayer?.id === this.controller.id;
 
     // Default timing: Only Neutral Open in own turn
     if (cardTiming === CardTiming.DEFAULT) {
@@ -204,27 +206,27 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
    * @private
    */
   private validateCosts(game: Game, card: GameCard): ActionValidationResult {
-    const runePool = (this.controller as any).runePool || { energy: 0, power: {} };
-    const cost = (card as any).cost || { energy: 0, power: {} };
+    const runePool = this.controller.runePool;
+    const energyCost = card.energyCost || 0;
+    const powerCosts = card.powerCost || [];
 
     // Check Energy
-    if (cost.energy > runePool.energy) {
+    if (energyCost > runePool.energy) {
       return this.validationFailure('Insufficient Energy', {
-        required: cost.energy,
+        required: energyCost,
         available: runePool.energy,
       });
     }
 
-    // Check Power
-    if (cost.power) {
-      for (const [domain, amount] of Object.entries(cost.power)) {
-        const available = runePool.power[domain] || 0;
-        if ((amount as number) > available) {
-          return this.validationFailure(`Insufficient ${domain} Power`, {
-            required: amount,
-            available,
-          });
-        }
+    // Check Power costs
+    for (const powerCost of powerCosts) {
+      const pool = runePool.power.find(p => p.domain === powerCost.domain);
+      const available = pool?.amount || 0;
+      if (powerCost.amount > available) {
+        return this.validationFailure(`Insufficient ${powerCost.domain} Power`, {
+          required: powerCost.amount,
+          available,
+        });
       }
     }
 
@@ -237,16 +239,18 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
    * @private
    */
   private payCosts(game: Game, card: GameCard): void {
-    const runePool = (this.controller as any).runePool;
-    const cost = (card as any).cost || { energy: 0, power: {} };
+    const runePool = this.controller.runePool;
+    const energyCost = card.energyCost || 0;
+    const powerCosts = card.powerCost || [];
 
     // Pay Energy
-    runePool.energy -= cost.energy || 0;
+    runePool.energy -= energyCost;
 
-    // Pay Power
-    if (cost.power) {
-      for (const [domain, amount] of Object.entries(cost.power)) {
-        runePool.power[domain] -= amount as number;
+    // Pay Power costs
+    for (const powerCost of powerCosts) {
+      const pool = runePool.power.find(p => p.domain === powerCost.domain);
+      if (pool) {
+        pool.amount -= powerCost.amount;
       }
     }
   }
@@ -257,8 +261,7 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
    * @private
    */
   private isPermanent(card: GameCard): boolean {
-    const cardType = (card as any).type;
-    return cardType === 'unit' || cardType === 'gear';
+    return card.cardType === CardType.UNIT || card.cardType === CardType.CHAMPION || card.cardType === CardType.GEAR;
   }
 
   /**
@@ -267,26 +270,17 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
    * @private
    */
   private putPermanentInPlay(game: Game, card: GameCard): void {
-    const cardType = (card as any).type;
+    if (card.cardType === CardType.UNIT || card.cardType === CardType.CHAMPION) {
+      // Units and Champions go to Base by default
+      card.zone = 'base';
+      card.ready = false; // Enter exhausted unless they have Accelerate keyword
+      this.controller.zones.base.push(card);
 
-    if (cardType === 'unit') {
-      // Units go to Base by default
-      const player = this.controller as any;
-      if (!player.base) {
-        player.base = { units: [] };
-      }
-      if (!player.base.units) {
-        player.base.units = [];
-      }
-      player.base.units.push(card);
-
-    } else if (cardType === 'gear') {
-      // Gears go to gear zone
-      const player = this.controller as any;
-      if (!player.gears) {
-        player.gears = [];
-      }
-      player.gears.push(card);
+    } else if (card.cardType === CardType.GEAR) {
+      // Gear goes to Base zone
+      card.zone = 'base';
+      card.ready = true; // Gear enters ready (per RULES.md)
+      this.controller.zones.base.push(card);
     }
   }
 
@@ -296,13 +290,10 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
    * @private
    */
   private resolveSpell(game: Game, card: GameCard): void {
-    // TODO: Execute card script
-    // For now, just move to trash
-    const player = this.controller as any;
-    if (!player.trash) {
-      player.trash = [];
-    }
-    player.trash.push(card);
+    // Spells will be executed via CardScriptRuntime externally
+    // Move to trash after resolution
+    card.zone = 'trash';
+    this.controller.zones.trash.push(card);
   }
 
   toHistoryEntry(): GameEvent {

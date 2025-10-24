@@ -5,7 +5,8 @@ import {
   TurnState,
   ScoringMethod,
   PriorityReason,
-  Battlefield
+  Battlefield,
+  GameCard
 } from '@/types/game';
 import { eventBus, GameEventFactory } from '../events';
 import { RunePoolManager } from './RunePoolManager';
@@ -14,7 +15,10 @@ import { PriorityManager } from './PriorityManager';
 import { BattlefieldManager } from './BattlefieldManager';
 import { ChainSystem } from '../systems/ChainSystem';
 import { CombatManager } from '../systems/CombatManager';
-import { CleanupSystem } from '../systems/CleanupSystem';
+import { CardScriptRuntime } from '../scripting/CardScriptRuntime';
+import type { CardScript } from '../scripting/types/CardScriptTypes';
+import { ActionExecutor } from '../actions/ActionExecutor';
+import { DrawCardAction, ReadyAllCardsAction, RemoveAllDamageAction } from '../actions/concrete';
 import { logger } from '@/utils/logger';
 
 /**
@@ -27,16 +31,18 @@ export class TurnManager {
   private battlefieldManager: BattlefieldManager;
   private chainSystem: ChainSystem;
   private combatManager: CombatManager;
-  private cleanupSystem: CleanupSystem;
+  private scriptRuntime: CardScriptRuntime;
+  private readonly executor: ActionExecutor; // ⭐ V3 ActionExecutor (mandatory)
 
-  constructor() {
+  constructor(scriptRuntime: CardScriptRuntime, executor: ActionExecutor) {
     this.runePoolManager = new RunePoolManager();
     this.scoringManager = new ScoringManager();
     this.priorityManager = new PriorityManager();
     this.battlefieldManager = new BattlefieldManager();
     this.chainSystem = new ChainSystem();
-    this.combatManager = new CombatManager(this.priorityManager);
-    this.cleanupSystem = new CleanupSystem(this.battlefieldManager);
+    this.scriptRuntime = scriptRuntime;
+    this.executor = executor;
+    this.combatManager = new CombatManager(this.priorityManager, scriptRuntime);
   }
 
   /**
@@ -63,15 +69,15 @@ export class TurnManager {
       game.round
     ));
 
+    // Execute onTurnStart hooks for current player's cards
+    await this.executeHooksForPlayerCards(game, currentPlayer, 'onTurnStart');
+
     // Reset turn state
     game.turnState = TurnState.NEUTRAL_OPEN;
 
     // Start with Awaken Phase
     game.phase = GamePhase.AWAKEN;
     await this.executeAwakenPhase(game);
-
-    // Continue to Beginning Phase
-    await this.nextPhase(game);
   }
 
   /**
@@ -125,6 +131,12 @@ export class TurnManager {
 
     game.phase = nextPhase;
 
+    // Execute onPhaseChange hooks for all cards in game
+    await this.executeHooksForAllCards(game, 'onPhaseChange', {
+      from: currentPhase,
+      to: nextPhase,
+    });
+
     // Execute the new phase
     await this.executePhase(game, nextPhase);
   }
@@ -137,6 +149,9 @@ export class TurnManager {
     if (!currentPlayer) return;
 
     logger.info(`TurnManager: Ending turn ${game.round} for player ${currentPlayer.name}`);
+
+    // Execute onTurnEnd hooks for current player's cards
+    await this.executeHooksForPlayerCards(game, currentPlayer, 'onTurnEnd');
 
     // Emit turn end event
     await eventBus.emit(GameEventFactory.createTurnEndEvent(
@@ -200,9 +215,6 @@ export class TurnManager {
 
     // Ready all Game Objects that the turn player controls
     await this.awakenAllCards(game, currentPlayer.id);
-
-    // Automatically advance to next phase
-    setTimeout(() => this.nextPhase(game), 100);
   }
 
   /**
@@ -219,9 +231,6 @@ export class TurnManager {
 
     // Scoring Step: Check for Hold scoring
     await this.checkScoring(game, currentPlayer.id);
-
-    // Automatically advance to next phase
-    setTimeout(() => this.nextPhase(game), 100);
   }
 
   /**
@@ -240,9 +249,6 @@ export class TurnManager {
     }
 
     await this.channelRunes(game, currentPlayer.id, runesToChannel);
-
-    // Automatically advance to next phase
-    setTimeout(() => this.nextPhase(game), 100);
   }
 
   /**
@@ -259,9 +265,6 @@ export class TurnManager {
 
     // Clear rune pool at end of draw phase
     await this.clearRunePool(game, currentPlayer.id);
-
-    // Automatically advance to next phase
-    setTimeout(() => this.nextPhase(game), 100);
   }
 
   /**
@@ -293,12 +296,16 @@ export class TurnManager {
    */
   async executeActionPhaseAction(game: Game, playerId: string, action: string, context: any): Promise<void> {
     const currentPlayer = game.players[game.currentPlayerIndex];
-    if (!currentPlayer || playerId !== currentPlayer.id) {
-      throw new Error('Not player\'s turn');
-    }
 
-    if (game.phase !== GamePhase.ACTION) {
-      throw new Error('Not in Action Phase');
+    // PASS_PRIORITY can be called by any player at any time (e.g., during Chain)
+    if (action !== 'PASS_PRIORITY') {
+      if (!currentPlayer || playerId !== currentPlayer.id) {
+        throw new Error('Not player\'s turn');
+      }
+
+      if (game.phase !== GamePhase.ACTION) {
+        throw new Error('Not in Action Phase');
+      }
     }
 
     logger.debug(`TurnManager: Executing action ${action} for ${playerId}`);
@@ -329,7 +336,7 @@ export class TurnManager {
   }
 
   /**
-   * Pass priority and potentially end Action Phase
+   * Pass priority (does NOT automatically advance phase - caller decides)
    */
   private async handlePassPriority(game: Game): Promise<void> {
     const currentPlayer = game.players[game.currentPlayerIndex];
@@ -337,15 +344,17 @@ export class TurnManager {
 
     logger.debug(`TurnManager: ${currentPlayer.name} passed priority`);
 
+    // If current player doesn't have priority but it's their turn, assign it first
+    if (!this.priorityManager.hasPriority(game, currentPlayer.id)) {
+      logger.debug(`TurnManager: Player ${currentPlayer.name} doesn't have priority yet, assigning it`);
+      await this.priorityManager.assignPriority(game, currentPlayer.id, PriorityReason.ACTION_PHASE);
+    }
+
     // Pass priority using PriorityManager
     await this.priorityManager.passPriority(game, currentPlayer.id);
 
-    // If player passes priority in Action Phase without pending showdowns or chain items,
-    // advance to next phase
-    if (!this.hasPendingShowdowns(game) && !this.hasPendingChainItems(game)) {
-      logger.debug('TurnManager: No pending actions, advancing to next phase');
-      await this.nextPhase(game);
-    }
+    // Note: Caller (GameManager) should check hasPendingShowdowns/hasPendingChainItems
+    // and decide whether to call nextPhase()
   }
 
   /**
@@ -436,11 +445,26 @@ export class TurnManager {
   private async resolveShowdown(game: Game): Promise<void> {
     logger.info('TurnManager: Resolving Showdown');
 
+    const currentPlayer = game.players[game.currentPlayerIndex];
+    if (!currentPlayer) return;
+
     // Delegate to CombatManager
     await this.combatManager.resolveShowdown(game);
 
-    // Perform cleanup after showdown/combat
-    await this.cleanupSystem.performCleanup(game);
+    // ⭐ V3: After combat resolution, remove all damage from units (RULES.md line 264)
+    const removeDamageAction = new RemoveAllDamageAction(currentPlayer, {});
+    const result = await this.executor.execute(removeDamageAction);
+
+    if (result.success) {
+      logger.debug(`TurnManager: Removed all damage after combat (V3)`);
+    } else {
+      logger.error(`TurnManager: Failed to remove damage after combat: ${result.error?.message}`);
+    }
+
+    // ⭐ V3: Process deaths after combat
+    if (game.processDeaths) {
+      await game.processDeaths();
+    }
 
     // Player retains priority and can continue with more actions in Action Phase
     logger.debug('TurnManager: Showdown resolved, player can continue Action Phase');
@@ -456,8 +480,9 @@ export class TurnManager {
 
   /**
    * Check if there are pending Showdowns
+   * PUBLIC: GameManager uses this to decide when to advance phases
    */
-  private hasPendingShowdowns(game: Game): boolean {
+  public hasPendingShowdowns(game: Game): boolean {
     // Check if any battlefield has contested status or pending combat
     return game.battlefields.some(battlefield =>
       battlefield.contested ||
@@ -467,8 +492,9 @@ export class TurnManager {
 
   /**
    * Check if there are pending Chain items
+   * PUBLIC: GameManager uses this to decide when to advance phases
    */
-  private hasPendingChainItems(game: Game): boolean {
+  public hasPendingChainItems(): boolean {
     // Check if ChainSystem has items to resolve
     return !this.chainSystem.isEmpty();
   }
@@ -506,9 +532,6 @@ export class TurnManager {
     logger.debug(`TurnManager: Executing Ending Phase for ${currentPlayer.name}`);
 
     // TODO: Implement "at the end of turn" triggered abilities
-
-    // Automatically advance to next phase
-    setTimeout(() => this.nextPhase(game), 100);
   }
 
   /**
@@ -520,20 +543,26 @@ export class TurnManager {
 
     logger.debug(`TurnManager: Executing Expiration Phase for ${currentPlayer.name}`);
 
-    // Remove all damage from units
-    await this.cleanupSystem.removeDamageFromUnits(game);
+    // ⭐ V3: Remove all damage from units using RemoveAllDamageAction
+    const removeDamageAction = new RemoveAllDamageAction(currentPlayer, {});
+    const result = await this.executor.execute(removeDamageAction);
 
-    // Remove all "this turn" effects
-    await this.cleanupSystem.removeTemporaryEffects(game);
+    if (result.success) {
+      logger.debug(`TurnManager: Removed all damage from units (V3)`);
+    } else {
+      logger.error(`TurnManager: Failed to remove damage: ${result.error?.message}`);
+    }
 
-    // Remove Temporary units
-    await this.cleanupSystem.removeTemporaryUnits(game);
+    // TODO: V3 IMPLEMENTATION - Implement ModifierRegistry cleanup for modifiers with duration='turn'
+    // This will automatically remove all temporary effects when we implement it
+    logger.debug('TurnManager: TODO - Remove temporary effects via ModifierRegistry');
+
+    // TODO: V3 IMPLEMENTATION - Implement token/temporary unit handling
+    // Temporary units should be marked in metadata and removed here
+    logger.debug('TurnManager: TODO - Remove temporary units');
 
     // Clear rune pool
     await this.clearRunePool(game, currentPlayer.id);
-
-    // Automatically advance to next phase
-    setTimeout(() => this.nextPhase(game), 100);
   }
 
   /**
@@ -542,20 +571,14 @@ export class TurnManager {
   private async executeCleanupPhase(game: Game): Promise<void> {
     logger.debug('TurnManager: Executing Cleanup Phase');
 
-    // Perform full cleanup
-    await this.cleanupSystem.performCleanup(game);
-
-    // Check for pending combats
-    const contestedBattlefields = await this.cleanupSystem.checkPendingCombats(game);
-
-    if (contestedBattlefields.length > 0) {
-      logger.info(`TurnManager: ${contestedBattlefields.length} contested battlefields found`);
-      // If there are contested battlefields, they will be handled in next Action Phase
+    // ⭐ V3: Process deaths (state-based action)
+    if (game.processDeaths) {
+      await game.processDeaths();
     }
 
-    // If new effects were triggered, return to Expiration
-    // For now, just end the turn
-    setTimeout(() => this.nextPhase(game), 100);
+    // TODO: V3 IMPLEMENTATION - Check for contested battlefields
+    // This should be a query method on BattlefieldManager
+    logger.debug('TurnManager: TODO - Check for contested battlefields');
   }
 
   // Helper methods
@@ -564,21 +587,15 @@ export class TurnManager {
     const player = game.players.find(p => p.id === playerId);
     if (!player) return;
 
-    // Ready all cards in board zones
-    [...player.zones.base, ...player.zones.runes].forEach(card => {
-      card.ready = true;
-    });
+    // ⭐ V3: Use ReadyAllCardsAction
+    const readyAction = new ReadyAllCardsAction(player, {});
+    const result = await this.executor.execute(readyAction);
 
-    // Ready units on battlefields controlled by this player
-    game.battlefields.forEach(battlefield => {
-      battlefield.units.forEach(unit => {
-        if (unit.controllerId === playerId) {
-          unit.ready = true;
-        }
-      });
-    });
-
-    logger.debug(`TurnManager: Readied all cards for player ${playerId}`);
+    if (result.success) {
+      logger.debug(`TurnManager: Readied all cards for player ${playerId} (V3)`);
+    } else {
+      logger.error(`TurnManager: Failed to ready cards: ${result.error?.message}`);
+    }
   }
 
   private async checkScoring(game: Game, playerId: string): Promise<void> {
@@ -598,24 +615,14 @@ export class TurnManager {
     const player = game.players.find(p => p.id === playerId);
     if (!player) return;
 
-    if (player.zones.mainDeck.length === 0) {
-      // Handle Burn Out
-      logger.warn(`TurnManager: Player ${playerId} triggered Burn Out`);
-      // TODO: Implement Burn Out mechanics
-      return;
-    }
+    // ⭐ V3: Use DrawCardAction
+    const drawAction = new DrawCardAction(player, { amount: 1 });
+    const result = await this.executor.execute(drawAction);
 
-    const card = player.zones.mainDeck.shift();
-    if (card) {
-      player.zones.hand.push(card);
-
-      await eventBus.emit(GameEventFactory.createCardDrawnEvent(
-        game.id,
-        playerId,
-        card.cardId
-      ));
-
-      logger.debug(`TurnManager: Player ${playerId} drew a card`);
+    if (result.success) {
+      logger.debug(`TurnManager: Player ${playerId} drew a card (V3)`);
+    } else {
+      logger.error(`TurnManager: Failed to draw card: ${result.error?.message}`);
     }
   }
 
@@ -623,7 +630,76 @@ export class TurnManager {
     await this.runePoolManager.clearRunePool(game, playerId);
   }
 
+  /**
+   * Execute a hook for all cards owned by a specific player
+   */
+  private async executeHooksForPlayerCards(
+    game: Game,
+    player: Player,
+    hookName: keyof CardScript,
+    additionalContext?: any
+  ): Promise<void> {
+    // Skip hook execution if scriptRuntime not available
+    if (!this.scriptRuntime) {
+      return;
+    }
+
+    // Collect all cards the player controls across all zones
+    const allCards: GameCard[] = [
+      ...player.zones.hand,
+      ...player.zones.base,
+      ...player.zones.championZone,
+      ...player.zones.runes,
+      ...this.getPlayerUnitsOnBattlefields(game, player.id),
+    ];
+
+    for (const card of allCards) {
+      try {
+        // CardScriptRuntime.executeHook handles loading the script, checking the hook, and building context
+        await this.scriptRuntime.executeHook(hookName as any, card as any, game, {
+          ...additionalContext,
+        });
+      } catch (error) {
+        // Script not found or hook execution failed - log warning but continue
+        logger.warn(`TurnManager: Failed to execute ${String(hookName)} for card ${card.cardId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Execute a hook for all cards in the game
+   */
+  private async executeHooksForAllCards(
+    game: Game,
+    hookName: keyof CardScript,
+    additionalContext?: any
+  ): Promise<void> {
+    for (const player of game.players) {
+      await this.executeHooksForPlayerCards(game, player, hookName, additionalContext);
+    }
+  }
+
+  /**
+   * Get all units controlled by a player across all battlefields
+   */
+  private getPlayerUnitsOnBattlefields(game: Game, playerId: string): GameCard[] {
+    const units: GameCard[] = [];
+
+    for (const battlefield of game.battlefields) {
+      if (battlefield.units) {
+        for (const unit of battlefield.units) {
+          if (unit.controllerId === playerId) {
+            units.push(unit);
+          }
+        }
+      }
+    }
+
+    return units;
+  }
+
 }
 
-// Global turn manager instance
-export const turnManager = new TurnManager();
+// Note: Global turn manager instance cannot be created here anymore
+// because it requires CardScriptRuntime dependency.
+// Create it in the code that initializes the runtime.

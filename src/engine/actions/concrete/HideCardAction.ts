@@ -19,6 +19,7 @@
 
 import { GameAction } from '../base/GameAction';
 import type { Player, Game, GameCard, GameEvent, Battlefield } from '../../../types/game';
+import { Keyword } from '../../../types/game';
 import { GameActionType } from '../../../types/actions';
 import type {
   ActionValidationResult,
@@ -57,10 +58,13 @@ export class HideCardAction extends GameAction<HideCardData> {
       });
     }
 
-    // Card must have Hidden keyword
-    // Note: In a full implementation, check card.keywords array
-    // For now, we assume the caller has verified this
-    // TODO: Add keyword checking when keyword system is integrated
+    // ⭐ VALIDATION: Card must have Hidden keyword
+    if (!card.keywords.includes(Keyword.HIDDEN)) {
+      return this.validationFailure('Card must have Hidden keyword', {
+        cardId: card.instanceId,
+        keywords: card.keywords,
+      });
+    }
 
     // Battlefield must exist in game
     const bf = game.battlefields.find(b => b.id === battlefield.id);
@@ -70,10 +74,20 @@ export class HideCardAction extends GameAction<HideCardData> {
       });
     }
 
-    // Battlefield facedown zone must be empty (max 1 card)
-    if (bf.facedownCards.length > 0) {
-      return this.validationFailure('Battlefield facedown zone already has a card', {
+    // ⭐ VALIDATION: Player must control the battlefield (must have conquered it)
+    if (bf.controller !== this.controller.id) {
+      return this.validationFailure('Player must control the battlefield to hide cards there', {
         battlefieldId: battlefield.id,
+        currentController: bf.controller,
+        playerId: this.controller.id,
+      });
+    }
+
+    // Battlefield facedown zone must be empty (max 1 card per battlefield)
+    if (bf.facedownCards && bf.facedownCards.length > 0) {
+      return this.validationFailure('Battlefield already has a hidden card', {
+        battlefieldId: battlefield.id,
+        existingCardCount: bf.facedownCards.length,
       });
     }
 
