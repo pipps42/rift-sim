@@ -1,0 +1,14 @@
+Darius, Hand of Noxus
+Legend
+Rare
+Fury
+Order
+Darius
+Energy
+0
+Power
+0
+Might
+0
+Description
+tap REACTION, LEGION - ADD 1 (Abilities that add resources can't be reacted to. Get the effect if you've played a card this turn.)

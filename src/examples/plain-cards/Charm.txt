@@ -1,0 +1,12 @@
+Charm
+Spell
+Common
+Calm
+Energy
+1
+Power
+1
+Might
+0
+Description
+Move an enemy unit.

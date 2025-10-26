@@ -82,7 +82,7 @@ export class CardFactory {
     return this.getAllCards().filter((card) => {
       // Check if script exists in runtime
       const loader = this.scriptRuntime.getLoader();
-      return loader.hasScript(card.id);
+      return loader.getScript(card.id) !== undefined;
     });
   }
 

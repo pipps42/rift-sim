@@ -1,0 +1,887 @@
+# Riftbound Simulator - Game Engine Architecture
+
+This document outlines the architecture and components of the Riftbound TCG game engine, designed to handle all game mechanics, state management, and rule enforcement according to the Riftbound rules.
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Client Layer                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │   Web Client    │  │  Mobile Client  │  │  Admin Panel │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ HTTP/WebSocket
+┌─────────────────────────┴───────────────────────────────────┐
+│                    API Gateway                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │ Authentication  │  │ Rate Limiting   │  │   Routing    │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────┴───────────────────────────────────┐
+│                Riftbound Game Engine Core                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │  Game Manager   │  │  Rule Engine    │  │ Event System │ │
+│  │                 │  │                 │  │              │ │
+│  │ ┌─────────────┐ │  │ ┌─────────────┐ │  │ ┌──────────┐ │ │
+│  │ │ Game State  │ │  │ │ Validators  │ │  │ │Event Bus │ │ │
+│  │ └─────────────┘ │  │ └─────────────┘ │  │ └──────────┘ │ │
+│  │ ┌─────────────┐ │  │ ┌─────────────┐ │  │ ┌──────────┐ │ │
+│  │ │Turn Manager │ │  │ │Chain System │ │  │ │Listeners │ │ │
+│  │ └─────────────┘ │  │ └─────────────┘ │  │ └──────────┘ │ │
+│  │ ┌─────────────┐ │  │ ┌─────────────┐ │  │              │ │
+│  │ │Priority Mgr │ │  │ │Effect System│ │  │              │ │
+│  │ └─────────────┘ │  │ └─────────────┘ │  │              │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │Battlefield Mgr  │  │ Rune Pool Mgr   │  │Scoring Mgr   │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────┴───────────────────────────────────┐
+│                    Data Layer                               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │   PostgreSQL    │  │     Redis       │  │  File System │ │
+│  │  (Game Data)    │  │   (Sessions)    │  │  (Card Art)  │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Core Engine Components
+
+### 1. Game Manager
+Central orchestrator for all Riftbound game operations.
+
+```typescript
+class GameManager {
+  private games: Map<string, Game> = new Map();
+  private turnManager: TurnManager;
+  private ruleEngine: RuleEngine;
+  private eventBus: EventBus;
+  private battlefieldManager: BattlefieldManager;
+  private scoringManager: ScoringManager;
+
+  // Core game lifecycle
+  async createGame(players: Player[], decks: Deck[]): Promise<Game>
+  async joinGame(gameId: string, player: Player): Promise<void>
+  async startGame(gameId: string): Promise<void>
+  async endGame(gameId: string, reason: GameEndReason): Promise<void>
+
+  // Riftbound-specific actions
+  async playCard(gameId: string, playerId: string, cardId: string, targets?: Target[]): Promise<ActionResult>
+  async standardMove(gameId: string, playerId: string, unitId: string, toBattlefield: string): Promise<ActionResult>
+  async hideCard(gameId: string, playerId: string, cardId: string, battlefieldId: string): Promise<ActionResult>
+  async activateAbility(gameId: string, playerId: string, abilityId: string, targets?: Target[]): Promise<ActionResult>
+  async passPriority(gameId: string, playerId: string): Promise<ActionResult>
+  async surrender(gameId: string, playerId: string): Promise<void>
+
+  // Deck building validation
+  async validateDeck(deck: Deck): Promise<DeckValidationResult>
+
+  private async setupGame(game: Game): Promise<void>
+  private async performMulligan(game: Game): Promise<void>
+}
+```
+
+### 2. Turn Manager
+Handles Riftbound's specific turn structure and phase transitions.
+
+```typescript
+class TurnManager {
+  private eventBus: EventBus;
+  private runePoolManager: RunePoolManager;
+
+  async startTurn(game: Game): Promise<void>
+  async nextPhase(game: Game): Promise<void>
+  async endTurn(game: Game): Promise<void>
+
+  // Riftbound phase implementations
+  private async executeAwakenPhase(game: Game): Promise<void>
+  private async executeBeginningPhase(game: Game): Promise<void>
+  private async executeChannelPhase(game: Game): Promise<void>
+  private async executeDrawPhase(game: Game): Promise<void>
+  private async executeActionPhase(game: Game): Promise<void>
+  private async executeEndingPhase(game: Game): Promise<void>
+  private async executeExpirationPhase(game: Game): Promise<void>
+  private async executeCleanupPhase(game: Game): Promise<void>
+
+  // Phase-specific actions
+  private async awakenAllCards(game: Game, playerId: string): Promise<void>
+  private async checkScoring(game: Game, playerId: string): Promise<void>
+  private async channelRunes(game: Game, playerId: string, count: number): Promise<void>
+  private async drawCard(game: Game, playerId: string): Promise<void>
+  private async clearRunePool(game: Game, playerId: string): Promise<void>
+  private async removeTemporaryEffects(game: Game): Promise<void>
+  private async performCleanup(game: Game): Promise<void>
+}
+```
+
+### 2.1. V3 GameAction System ⭐ NEW
+
+The V3 GameAction system provides a declarative, LoR-inspired action pipeline with modifiers and triggers.
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      CARD SCRIPTS                            │
+│  Scripts declare INTENTIONS, not mutations                  │
+│  e.g., "Deal 3 damage to target unit"                      │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ Creates GameAction
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   GAMEACTION PIPELINE                        │
+│  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌──────────────┐  │
+│  │ VALIDATE│→ │ MODIFIERS│→ │ EXECUTE │→ │   TRIGGERS   │  │
+│  └─────────┘  └──────────┘  └─────────┘  └──────────────┘  │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ Modified action + consequences
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      GAME STATE                              │
+│  State mutated only here, in controlled manner              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+
+```typescript
+// Action Executor - 7-phase pipeline
+class ActionExecutor {
+  private game: Game;
+  private modifierRegistry: ModifierRegistry;
+  private triggerRegistry: TriggerRegistry;
+
+  async execute(action: GameAction): Promise<ActionExecutionResult> {
+    // Phase 1: Validation
+    // Phase 2: Apply Modifiers (can modify/replace/prevent action)
+    // Phase 3: Execute
+    // Phase 4: History Logging
+    // Phase 5: Trigger Resolution
+    // Phase 6: Side Effects (recursive)
+    // Phase 7: Cleanup (processDeaths, expire modifiers/triggers)
+  }
+}
+
+// Base Classes
+abstract class GameAction<TData> {
+  abstract validate(game: Game): ActionValidationResult;
+  abstract execute(game: Game): ActionExecutionResult;
+  abstract toHistoryEntry(): GameEvent;
+}
+
+abstract class ActionModifier {
+  abstract modify(action: GameAction, game: Game): Promise<GameAction | null>;
+  abstract isActive(game: Game): boolean;
+}
+
+abstract class ActionTrigger {
+  abstract shouldTrigger(action: GameAction, game: Game): Promise<boolean>;
+  abstract trigger(action: GameAction, game: Game): Promise<GameAction[]>;
+  abstract isActive(game: Game): boolean;
+}
+```
+
+**Implemented Actions:**
+- `DealDamageAction` - Deal damage to units (not players)
+- `DrawCardAction` - Draw cards from deck
+- `PlayCardAction` - Play a card with timing validation
+- `AddEnergyAction` - Add energy to rune pool
+- `AddPowerAction` - Add power to rune pool
+- `MoveUnitAction` - Move unit between battlefields
+
+**Implemented Modifiers:**
+- `DamageModifier` - Modify damage amounts (e.g., "+2 spell damage")
+- `CostModifier` - Modify card costs (e.g., "spells cost 1 less")
+- `DrawModifier` - Modify draw count (e.g., "draw 2 instead of 1")
+
+**Implemented Triggers:**
+- `OnDamageDealtTrigger` - React to damage dealt
+- `OnCardPlayedTrigger` - React to cards played
+- `OnUnitDeathTrigger` - React to unit deaths
+
+**Example Usage in Card Script:**
+```typescript
+// Card: "Arcane Amplifier - Your spells deal +2 damage"
+onPlay: (ctx) => {
+  ctx.modifierRegistry.register('deal_damage', new DamageModifier({
+    sourceCard: ctx.self,
+    damageModification: 2,
+    filter: (action) => action.data.damageType === 'spell',
+    expiresWhen: (game) => !isInPlay(ctx.self, game),
+  }));
+}
+
+// Card: "Vengeful Spirit - When this dies, deal 3 damage to all enemies"
+onPlay: (ctx) => {
+  ctx.triggerRegistry.register('unit_death', new OnUnitDeathTrigger({
+    sourceCard: ctx.self,
+    filter: (deadUnit) => deadUnit.instanceId === ctx.self.instanceId,
+    oneShot: true,
+    onTrigger: async (deadUnit, game) => {
+      const enemies = getEnemyUnits(game, ctx.controller.id);
+      return enemies.map(target =>
+        new DealDamageAction(ctx.controller, {
+          target,
+          amount: 3,
+          damageType: 'effect',
+        })
+      );
+    },
+  }));
+}
+```
+
+**Test Coverage:** 83/84 tests passing (98.8%)
+
+**Files:**
+- Base: `src/engine/actions/base/*.ts`
+- Core: `src/engine/actions/ActionExecutor.ts`, `ModifierRegistry.ts`, `TriggerRegistry.ts`
+- Concrete: `src/engine/actions/concrete/*.ts`
+- Modifiers: `src/engine/actions/modifiers/*.ts`
+- Triggers: `src/engine/actions/triggers/*.ts`
+
+**Complete Actions List (18 implemented):**
+- DealDamageAction - Deal damage to units (not players)
+- DrawCardAction - Draw cards from deck
+- PlayCardAction - Play card with timing validation
+- AddEnergyAction - Add energy to rune pool
+- AddPowerAction - Add power to rune pool
+- MoveUnitAction - Move unit between battlefields
+- DiscardCardAction - Discard from hand to trash
+- ExhaustCardAction - Exhaust card (ready → exhausted)
+- ReadyCardAction - Ready card (exhausted → ready)
+- RecycleCardAction - Return card to bottom of deck
+- KillCardAction - Kill permanent (send to trash)
+- HideCardAction - Place card facedown on battlefield
+- BanishCardAction - Permanently remove from game
+- RevealCardAction - Reveal facedown card
+- ChannelRuneAction - Channel rune from deck
+- StunUnitAction - Apply stun status
+- HealDamageAction - Heal damage from unit
+- CounterSpellAction - Counter spell on chain
+
+### 2.2. CardStateScanner ⭐ NEW
+
+The CardStateScanner is a centralized push-based system that scans all cards on every game state change to determine:
+- Which cards are playable
+- Which activated abilities are available
+- What triggers are pending
+- Effective costs with modifiers applied
+
+**Status:** IMPLEMENTED (100%)
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      GAME STATE CHANGE                       │
+│  (action executed, phase changed, card played, etc.)        │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   CARDSTATESCANNER                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ State Hash   │→ │ Scan All     │→ │ Calculate    │      │
+│  │ Check        │  │ Cards        │  │ Delta        │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ ScanDelta
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      UI / GAME MANAGER                       │
+│  - Update playable cards highlights                         │
+│  - Show available abilities                                 │
+│  - Display effective costs                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- **State hashing** - Skip scan if state unchanged
+- **Delta calculation** - Only report what changed
+- **Metadata-driven** - Cards declare constraints, scanner evaluates
+- **Performance optimized** - Caches results, only rescans on mutation
+- **Error resilient** - Per-card try-catch, continues scanning others
+
+**API:**
+```typescript
+class CardStateScanner {
+  // Main entry point - scan all cards after any state change
+  async scanGameState(game: Game): Promise<ScanDelta>
+
+  // Query current results
+  getCurrentResults(): Map<string, CardScanResult>
+  getCardState(cardInstanceId: string): CardScanResult | undefined
+
+  private scanCard(card: GameCard, game: Game): Promise<CardScanResult>
+  private checkPlayability(card, game, owner, script, ctx): PlayabilityInfo
+  private calculateEffectiveCost(card, game, script, ctx): EffectiveCost
+  private scanActivatedAbilities(card, game, owner, script, ctx): ActivatedAbilityInfo[]
+  private scanPendingTriggers(card, game, script, ctx): PendingTrigger[]
+  private getAllCardsInGame(game: Game): GameCard[]
+  private calculateDelta(previous, current): ScanDelta
+  private hashGameState(game: Game): string
+}
+```
+
+**Integration with GameManager:**
+```typescript
+class GameManager {
+  private scanners: Map<string, CardStateScanner> = new Map();
+
+  // Query methods (UI-facing)
+  getPlayableCards(gameId: string, playerId: string): GameCard[]
+  getActivatableCards(gameId: string, playerId: string): Array<{card, abilities}>
+
+  // Called after any game state mutation
+  private async onStateChanged(game: Game): Promise<void> {
+    const delta = await scanner.scanGameState(game);
+    if (delta.changed) {
+      // Notify UI via WebSocket (future)
+      this.notifyStateChange(game.id, delta);
+    }
+  }
+}
+```
+
+**Card Metadata Format:**
+Cards define declarative metadata that the scanner evaluates:
+```typescript
+export const exampleCard: CardScript = {
+  metadata: {
+    // Cost modifiers (e.g., "costs 1 less for each unit")
+    costModifiers: [{
+      id: 'unit_reduction',
+      description: 'Costs 1 less for each unit you control',
+      calculate: (ctx) => ({
+        energyChange: -countUnits(ctx.game, ctx.owner.id)
+      })
+    }],
+
+    // Play constraints (e.g., "can only play if you control battlefield")
+    playConstraints: [{
+      id: 'control_battlefield',
+      description: 'Must control a battlefield',
+      check: (ctx) => ({
+        satisfied: hasControlledBattlefield(ctx.game, ctx.owner.id),
+        reason: "You don't control any battlefield"
+      })
+    }],
+
+    // Activated abilities
+    activatedAbilities: [{
+      id: 'hide',
+      name: 'Hide',
+      description: 'Place facedown on battlefield',
+      availableFrom: ['hand'],
+      costs: { energy: 2 },
+      constraints: [...],
+      onActivate: async (ctx) => [new HideCardAction(...)]
+    }]
+  }
+}
+```
+
+**Performance:**
+- ~50-100ms per scan for 80-card game
+- Delta calculation prevents redundant UI updates
+- State hash prevents unnecessary rescanning
+
+**Files:**
+- Core: `src/engine/scanning/CardStateScanner.ts` (570 lines)
+- Types: `src/engine/scanning/types/ScanTypes.ts` (345 lines)
+- Tests: TBD (planned)
+
+### 3. Rule Engine
+Validates actions and enforces Riftbound game rules.
+
+```typescript
+class RuleEngine {
+  private validators: Map<ActionType, ActionValidator[]> = new Map();
+  private chainSystem: ChainSystem;
+
+  validateAction(game: Game, action: GameAction): ValidationResult
+  canPlayCard(game: Game, playerId: string, cardId: string): boolean
+  canStandardMove(game: Game, unitId: string, toBattlefield: string): boolean
+  canActivateAbility(game: Game, abilityId: string): boolean
+
+  // Riftbound-specific validations
+  private validateDomainIdentity(deck: Deck): boolean
+  private validateEnergyAndPowerCosts(game: Game, playerId: string, card: Card): boolean
+  private validateMovementRestrictions(game: Game, unitId: string, toBattlefield: string): boolean
+  private validateSignatureCards(deck: Deck): boolean
+  private validateBattlefieldControl(game: Game, battlefieldId: string): boolean
+  private validateSpellTiming(game: Game, spell: SpellCard): boolean
+}
+```
+
+### 4. Chain System
+Manages spell and ability resolution using Riftbound's Chain system.
+
+```typescript
+class ChainSystem {
+  private chain: ChainItem[] = [];
+  private eventBus: EventBus;
+
+  push(item: ChainItem): void
+  async resolve(game: Game): Promise<void>
+  peek(): ChainItem | undefined
+  isEmpty(): boolean
+  canAddToChain(game: Game, item: ChainItem): boolean
+
+  // Riftbound-specific chain handling
+  private async checkTriggeredAbilities(game: Game, event: GameEvent): Promise<void>
+  private async resolveChainItem(game: Game, item: ChainItem): Promise<void>
+  private validateSpellTiming(game: Game, timing: SpellTiming): boolean
+  private checkReactionWindow(game: Game): boolean
+}
+```
+
+### 5. Combat and Showdown Manager
+Handles Riftbound's combat system with Showdowns and Battlefield control.
+
+```typescript
+class CombatManager {
+  private eventBus: EventBus;
+  private battlefieldManager: BattlefieldManager;
+
+  async initiateShowdown(game: Game, battlefieldId: string): Promise<void>
+  async initiateCombat(game: Game, battlefieldId: string): Promise<void>
+  async resolveCombatDamage(game: Game, combat: CombatState): Promise<void>
+
+  // Riftbound combat mechanics
+  private async applyAssaultBonuses(combat: CombatState): Promise<void>
+  private async applyShieldBonuses(combat: CombatState): Promise<void>
+  private async distributeDamage(game: Game, combat: CombatState): Promise<void>
+  private async handleTankKeyword(combat: CombatState): Promise<void>
+  private async checkMightThresholds(game: Game, units: CombatUnit[]): Promise<void>
+  private async handleConquer(game: Game, battlefieldId: string, winnerId: string): Promise<void>
+}
+```
+
+### 6. Battlefield Manager
+Manages battlefield control, movement, and Contested status.
+
+```typescript
+class BattlefieldManager {
+  private eventBus: EventBus;
+
+  async moveUnitToBattlefield(game: Game, unitId: string, battlefieldId: string): Promise<void>
+  async checkBattlefieldControl(game: Game, battlefieldId: string): Promise<string | null>
+  async setContested(game: Game, battlefieldId: string, contested: boolean): Promise<void>
+  async recallUnitsToBase(game: Game, units: string[], playerId: string): Promise<void>
+
+  // Movement validation
+  canMoveToOccupiedBattlefield(game: Game, unitId: string, battlefieldId: string): boolean
+  validateGankingMovement(game: Game, unitId: string, fromBattlefield: string, toBattlefield: string): boolean
+
+  private async triggerBattlefieldAbilities(game: Game, battlefieldId: string): Promise<void>
+  private async checkCombatTrigger(game: Game, battlefieldId: string): Promise<void>
+}
+```
+
+### 7. Rune Pool Manager
+Manages Energy and Power resources according to Riftbound rules.
+
+```typescript
+class RunePoolManager {
+  private eventBus: EventBus;
+
+  async channelRunes(game: Game, playerId: string, count: number): Promise<void>
+  async addEnergy(game: Game, playerId: string, amount: number): Promise<void>
+  async addPower(game: Game, playerId: string, domain: Domain, amount: number): Promise<void>
+  async payEnergyCost(game: Game, playerId: string, amount: number): Promise<boolean>
+  async payPowerCost(game: Game, playerId: string, costs: PowerCost[]): Promise<boolean>
+  async clearRunePool(game: Game, playerId: string): Promise<void>
+
+  canAffordCard(game: Game, playerId: string, card: Card): boolean
+  getAvailableEnergy(game: Game, playerId: string): number
+  getAvailablePower(game: Game, playerId: string, domain: Domain): number
+
+  private async recycleRune(game: Game, playerId: string, runeId: string): Promise<void>
+  private async handleBasicRuneAbilities(game: Game, rune: RuneCard): Promise<void>
+}
+```
+
+### 8. Scoring Manager
+Handles Riftbound's victory condition system (Hold, Conquer, 8-point victory).
+
+```typescript
+class ScoringManager {
+  private eventBus: EventBus;
+
+  async checkHoldScoring(game: Game, playerId: string): Promise<void>
+  async checkConquerScoring(game: Game, playerId: string, battlefieldId: string): Promise<void>
+  async awardPoints(game: Game, playerId: string, points: number, method: ScoringMethod, battlefieldId: string): Promise<void>
+  async checkVictoryCondition(game: Game): Promise<string | null>
+
+  // Final point special rules
+  private async handleFinalPoint(game: Game, playerId: string, method: ScoringMethod, battlefieldId: string): Promise<void>
+  private async checkAllBattlefieldsScored(game: Game, playerId: string): Promise<boolean>
+  private canScoreBattlefield(game: Game, battlefieldId: string, playerId: string): boolean
+}
+```
+
+### 9. Priority and Focus Manager
+Manages Priority, Focus, and Relevant Players according to Riftbound rules.
+
+```typescript
+class PriorityManager {
+  private eventBus: EventBus;
+
+  async assignPriority(game: Game, playerId: string, reason: PriorityReason): Promise<void>
+  async assignFocus(game: Game, playerId: string): Promise<void>
+  async passPriority(game: Game, playerId: string): Promise<void>
+  async determineRelevantPlayers(game: Game, context: GameContext): Promise<string[]>
+
+  hasPriority(game: Game, playerId: string): boolean
+  hasFocus(game: Game, playerId: string): boolean
+  canTakeAction(game: Game, playerId: string): boolean
+
+  private async checkPriorityTransition(game: Game): Promise<void>
+  private async handleFocusTransition(game: Game): Promise<void>
+  private async invitePlayer(game: Game, playerId: string): Promise<void>
+}
+```
+
+### 10. Effect System ⚠️ DEPRECATED
+
+**Status:** DEPRECATED - Use V3 Modifier System instead
+
+The EffectSystem was designed in Phase 1 before the V3 GameAction system was implemented. It has been superseded by the V3 ModifierRegistry and TriggerRegistry, which provide:
+- Better isolation and testability
+- Declarative modifier composition
+- Automatic cleanup and expiration
+- Type-safe action modification
+
+**Migration Path:**
+- Replace EffectSystem.resolveEffect() → Use GameAction execution
+- Replace EffectSystem.registerTrigger() → Use TriggerRegistry.register()
+- Replace direct state mutations → Use V3 Modifiers
+
+**Legacy API (do not use):**
+```typescript
+class EffectSystem {
+  private eventBus: EventBus;
+  private chainSystem: ChainSystem;
+
+  async resolveEffect(game: Game, effect: Effect): Promise<void>
+  async triggerAbilities(game: Game, event: GameEvent): Promise<void>
+  registerTrigger(trigger: AbilityTrigger, callback: TriggerCallback): void
+
+  // Riftbound-specific effects
+  private async damageEffect(game: Game, targets: Target[], amount: number): Promise<void>
+  private async mightBuffEffect(game: Game, targets: Target[], bonus: number): Promise<void>
+  private async moveUnitEffect(game: Game, unitId: string, destination: string): Promise<void>
+  private async exhaustEffect(game: Game, targets: Target[]): Promise<void>
+  private async readyEffect(game: Game, targets: Target[]): Promise<void>
+  private async stunEffect(game: Game, targets: Target[]): Promise<void>
+  private async addKeywordEffect(game: Game, targets: Target[], keyword: Keyword): Promise<void>
+  private async createTokenEffect(game: Game, tokenCard: Card, location: string): Promise<void>
+}
+```
+
+### 10a. Cleanup System ⚠️ DEPRECATED
+
+**Status:** DEPRECATED - Use V3 ActionExecutor Phase 7 instead
+
+The CleanupSystem was designed to handle end-of-turn and end-of-phase cleanup. This functionality has been integrated into the V3 ActionExecutor's Phase 7 (Cleanup), which provides:
+- Automatic death processing after actions complete
+- Modifier/trigger expiration checks
+- Unified cleanup pipeline
+
+**Migration Path:**
+- Replace CleanupSystem.performCleanup() → V3 ActionExecutor handles this automatically
+- Replace manual processDeaths() calls → Use V3 ActionExecutor Phase 7
+- Expiration logic → Implement in Modifier/Trigger `isActive()` methods
+
+---
+
+### 11. Event System ✅ KEPT (Infrastructure Only)
+
+**Status:** ACTIVE - Repurposed for cross-layer communication only
+
+The EventBus remains active but has a **redefined role**:
+
+**What EventBus IS for:**
+- UI updates and notifications
+- Analytics and telemetry
+- Logging and debugging
+- Cross-layer communication (e.g., notifying websocket layer of state changes)
+
+**What EventBus is NOT for:**
+- Game logic and rule enforcement (use V3 GameAction system)
+- Card triggers (use V3 TriggerRegistry)
+- State mutations (use V3 Actions)
+
+**API:**
+```typescript
+class EventBus {
+  private listeners: Map<EventType, EventListener[]> = new Map();
+
+  emit(event: GameEvent): void
+  on(eventType: EventType, listener: EventListener): void
+  off(eventType: EventType, listener: EventListener): void
+
+  private notifyListeners(event: GameEvent): void
+}
+
+interface EventListener {
+  priority: number;
+  callback: (event: GameEvent) => Promise<void>;
+}
+
+// Riftbound-specific events (infrastructure only - NOT for game logic!)
+enum RiftboundEventType {
+  // Phase events (for UI updates)
+  AWAKEN_PHASE = 'awaken_phase',
+  BEGINNING_PHASE = 'beginning_phase',
+  CHANNEL_PHASE = 'channel_phase',
+
+  // Battlefield events (for UI updates)
+  UNIT_MOVED = 'unit_moved',
+  BATTLEFIELD_CONTESTED = 'battlefield_contested',
+  BATTLEFIELD_SCORED = 'battlefield_scored',
+
+  // Combat events (for UI updates)
+  SHOWDOWN_START = 'showdown_start',
+  COMBAT_DAMAGE_DEALT = 'combat_damage_dealt',
+  UNIT_MIGHT_REACHED = 'unit_might_reached',
+
+  // Resource events (for UI updates)
+  RUNE_CHANNELED = 'rune_channeled',
+  ENERGY_ADDED = 'energy_added',
+  POWER_ADDED = 'power_added',
+  RUNE_POOL_CLEARED = 'rune_pool_cleared',
+
+  // Special events (for UI updates)
+  BURN_OUT = 'burn_out',
+  FINAL_POINT_ATTEMPT = 'final_point_attempt'
+}
+```
+
+## State Management
+
+### Game State Store
+```typescript
+class GameStateStore {
+  private redis: RedisClient;
+  private postgres: PostgreSQLClient;
+
+  // Game state persistence
+  async saveGameState(gameId: string, state: GameState): Promise<void>
+  async loadGameState(gameId: string): Promise<GameState | null>
+  async deleteGameState(gameId: string): Promise<void>
+
+  // Riftbound-specific state
+  async saveRunePoolState(gameId: string, playerId: string, pool: RunePool): Promise<void>
+  async saveBattlefieldStates(gameId: string, battlefields: Battlefield[]): Promise<void>
+  async saveChainState(gameId: string, chain: ChainItem[]): Promise<void>
+
+  // Player session management
+  async savePlayerSession(playerId: string, session: PlayerSession): Promise<void>
+  async getPlayerSession(playerId: string): Promise<PlayerSession | null>
+
+  // Game history and replay
+  async saveGameEvent(event: GameEvent): Promise<void>
+  async getGameHistory(gameId: string): Promise<GameEvent[]>
+  async createGameReplay(gameId: string): Promise<GameReplay>
+}
+```
+
+### State Synchronization
+```typescript
+class StateSynchronizer {
+  private websocketManager: WebSocketManager;
+
+  async broadcastGameState(gameId: string, state: GameState): Promise<void>
+  async sendPlayerUpdate(playerId: string, update: PlayerUpdate): Promise<void>
+  async notifySpectators(gameId: string, event: GameEvent): Promise<void>
+
+  // Riftbound-specific synchronization
+  async broadcastBattlefieldUpdate(gameId: string, battlefield: Battlefield): Promise<void>
+  async broadcastRunePoolUpdate(gameId: string, playerId: string, pool: RunePool): Promise<void>
+  async broadcastPriorityChange(gameId: string, priorityState: PriorityState): Promise<void>
+
+  private filterStateForPlayer(state: GameState, playerId: string): FilteredGameState
+  private filterHiddenInformation(state: GameState, playerId: string): GameState
+}
+```
+
+## Input Validation and Security
+
+### Action Validator
+```typescript
+class ActionValidator {
+  validatePlayCard(game: Game, playerId: string, action: PlayCardAction): ValidationResult
+  validateStandardMove(game: Game, playerId: string, action: MoveAction): ValidationResult
+  validateAbilityActivation(game: Game, playerId: string, action: AbilityAction): ValidationResult
+
+  // Riftbound-specific validations
+  private validatePlayerHasPriority(game: Game, playerId: string): boolean
+  private validatePhaseRestrictions(game: Game, action: GameAction): boolean
+  private validateEnergyAndPowerRequirements(game: Game, playerId: string, costs: CostPayment): boolean
+  private validateDomainIdentityCompliance(deck: Deck): boolean
+  private validateMovementRestrictions(game: Game, unitId: string, destination: string): boolean
+}
+```
+
+### Anti-Cheat System
+```typescript
+class AntiCheatSystem {
+  private suspiciousActions: Map<string, SuspiciousAction[]> = new Map();
+
+  validateActionTiming(playerId: string, action: GameAction): boolean
+  checkActionFrequency(playerId: string): boolean
+  validateGameStateConsistency(game: Game): boolean
+
+  // Riftbound-specific anti-cheat
+  private validateRunePoolConsistency(game: Game, playerId: string): boolean
+  private validateBattlefieldControlIntegrity(game: Game): boolean
+  private validateChainResolutionOrder(game: Game): boolean
+  private validateScoringIntegrity(game: Game): boolean
+
+  private flagSuspiciousActivity(playerId: string, reason: string): void
+  private checkReplayConsistency(gameId: string): Promise<boolean>
+}
+```
+
+## AI and Automation
+
+### AI Player Interface
+```typescript
+interface RiftboundAIPlayer {
+  id: string;
+  difficulty: AIDifficulty;
+  makeDecision(game: Game, availableActions: GameAction[]): Promise<GameAction>
+  evaluateGameState(game: Game): GameStateEvaluation
+
+  // Riftbound-specific AI decisions
+  chooseBattlefieldToAttack(game: Game, availableBattlefields: string[]): Promise<string>
+  prioritizeScoring(game: Game, scoringOpportunities: ScoringOpportunity[]): Promise<ScoringOpportunity>
+  manageRunePool(game: Game, availableRunes: RuneCard[]): Promise<RuneCard[]>
+}
+
+enum AIDifficulty {
+  EASY = 'easy',
+  MEDIUM = 'medium',
+  HARD = 'hard',
+  EXPERT = 'expert'
+}
+```
+
+### Deck Builder AI
+```typescript
+class RiftboundDeckBuilderAI {
+  async generateDeck(championLegend: ChampionLegendCard, strategy: DeckStrategy): Promise<Deck>
+  async suggestCardReplacements(deck: Deck, meta: MetaAnalysis): Promise<CardSuggestion[]>
+
+  // Riftbound-specific deck building
+  private validateDomainIdentity(deck: Deck, championLegend: ChampionLegendCard): boolean
+  private optimizeEnergyCurve(deck: Deck): DeckCard[]
+  private balanceSignatureCards(deck: Deck): DeckCard[]
+  private calculateDomainSynergy(cards: Card[], domains: Domain[]): number
+  private evaluateRuneDeckComposition(runeDeck: RuneCard[]): RuneDeckAnalysis
+}
+```
+
+## Testing Framework
+
+### Game Simulator
+```typescript
+class RiftboundGameSimulator {
+  async simulateGame(deck1: Deck, deck2: Deck, iterations: number): Promise<SimulationResult>
+  async testCardBalance(card: Card, environment: TestEnvironment): Promise<BalanceReport>
+  async validateRuleImplementation(rule: GameRule): Promise<ValidationReport>
+
+  // Riftbound-specific testing
+  async testScoringMechanics(scenarios: ScoringScenario[]): Promise<ScoringTestResult>
+  async testBattlefieldControl(scenarios: BattlefieldScenario[]): Promise<BattlefieldTestResult>
+  async testChainResolution(scenarios: ChainScenario[]): Promise<ChainTestResult>
+  async testCombatMechanics(scenarios: CombatScenario[]): Promise<CombatTestResult>
+
+  private createTestGame(decks: Deck[]): Game
+  private executeRandomActions(game: Game): Promise<void>
+  private validateFinalGameState(game: Game): ValidationResult
+}
+```
+
+### Integration Testing
+```typescript
+class RiftboundEngineTests {
+  async testGameFlow(): Promise<TestResult>
+  async testTurnStructure(): Promise<TestResult>
+  async testShowdownMechanics(): Promise<TestResult>
+  async testChainResolution(): Promise<TestResult>
+  async testKeywordInteractions(): Promise<TestResult>
+  async testScoringSystem(): Promise<TestResult>
+  async testBurnOutMechanics(): Promise<TestResult>
+
+  private setupTestGame(): Game
+  private assertGameState(game: Game, expectedState: Partial<GameState>): void
+  private simulateFullGame(deck1: Deck, deck2: Deck): Promise<Game>
+}
+```
+
+## Performance and Monitoring
+
+### Performance Monitor
+```typescript
+class RiftboundPerformanceMonitor {
+  private metrics: Map<string, Metric[]> = new Map();
+
+  recordActionLatency(action: string, duration: number): void
+  recordChainResolutionTime(chainLength: number, duration: number): void
+  recordCombatResolutionTime(unitsCount: number, duration: number): void
+  recordMemoryUsage(gameId: string, usage: number): void
+  recordConcurrentGames(count: number): void
+
+  generatePerformanceReport(): PerformanceReport
+  checkPerformanceThresholds(): Alert[]
+
+  // Riftbound-specific metrics
+  private trackRunePoolOperations(): void
+  private trackBattlefieldStateChanges(): void
+  private trackScoringPerformance(): void
+}
+```
+
+### Game Analytics
+```typescript
+class RiftboundGameAnalytics {
+  async trackCardUsage(cardId: string, context: UsageContext): Promise<void>
+  async trackWinRates(deckArchetype: string, winRate: number): Promise<void>
+  async trackScoringPatterns(method: ScoringMethod, timing: number): Promise<void>
+  async generateMetaReport(): Promise<RiftboundMetaReport>
+
+  // Riftbound-specific analytics
+  private calculateDomainPopularity(): DomainPopularity[]
+  private analyzeBattlefieldControlPatterns(): BattlefieldPattern[]
+  private identifyBalanceIssues(): BalanceIssue[]
+  private trackKeywordEffectiveness(): KeywordAnalysis[]
+}
+```
+
+## Error Handling and Recovery
+
+### Error Handler
+```typescript
+class RiftboundGameErrorHandler {
+  async handleGameError(error: GameError, game: Game): Promise<void>
+  async recoverFromDesync(gameId: string): Promise<boolean>
+  async rollbackToLastValidState(gameId: string): Promise<void>
+
+  // Riftbound-specific error recovery
+  async recoverFromChainCorruption(gameId: string): Promise<void>
+  async recoverFromBattlefieldDesync(gameId: string): Promise<void>
+  async recoverFromRunePoolInconsistency(gameId: string, playerId: string): Promise<void>
+  async recoverFromScoringError(gameId: string): Promise<void>
+
+  private logError(error: GameError, context: ErrorContext): void
+  private notifyPlayers(gameId: string, message: string): void
+  private createErrorReport(error: GameError, game: Game): ErrorReport
+}
+```
+
+This architecture provides a robust, scalable foundation for implementing the complete Riftbound TCG simulator while maintaining performance, security, and extensibility according to the actual Riftbound game rules and mechanics.

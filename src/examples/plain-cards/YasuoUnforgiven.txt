@@ -1,0 +1,14 @@
+Yasuo, Unforgiven
+Legend
+Rare
+Calm
+Chaos
+Yasuo
+Energy
+0
+Power
+0
+Might
+0
+Description
+2, tap: Move a friendly unit to or from its base.

@@ -1,0 +1,13 @@
+Defy
+Spell
+Common
+Calm
+Energy
+1
+Power
+1
+Might
+0
+Description
+REACTION (Play any time, even before spells and abilities resolve.)
+Counter a spell that costs no more than 4 and no more than rune.

@@ -291,6 +291,290 @@ describe('GameManager', () => {
       expect(canAct).toBe(false);
     });
   });
+
+  // ============================================================================
+  // ⭐ NEW: Player Actions Tests
+  // ============================================================================
+
+  describe('playCard', () => {
+    it('should play a unit card from hand to base', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      // Add a test unit to hand
+      const testCard = createMockUnitCard(currentPlayer.id);
+      currentPlayer.zones.hand.push(testCard);
+      currentPlayer.runePool.energy = 5; // Ensure player has enough energy
+
+      const result = await gameManager.playCard(game.id, currentPlayer.id, testCard.instanceId);
+
+      expect(result.success).toBe(true);
+      expect(currentPlayer.zones.hand).not.toContain(testCard);
+      expect(currentPlayer.zones.base).toContain(testCard);
+      expect(testCard.zone).toBe('base');
+    });
+
+    it('should fail if card not in hand', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const result = await gameManager.playCard(game.id, currentPlayer.id, 'non-existent-card');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not found in hand');
+    });
+
+    it('should fail if not enough energy', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const testCard = createMockUnitCard(currentPlayer.id);
+      testCard.energyCost = 10;
+      currentPlayer.zones.hand.push(testCard);
+      currentPlayer.runePool.energy = 2; // Not enough
+
+      const result = await gameManager.playCard(game.id, currentPlayer.id, testCard.instanceId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Insufficient Energy');
+    });
+
+    it('should fail if not player turn', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const opponentIndex = game.currentPlayerIndex === 0 ? 1 : 0;
+      const opponent = game.players[opponentIndex];
+      if (!opponent) throw new Error('No opponent');
+
+      const testCard = createMockUnitCard(opponent.id);
+      opponent.zones.hand.push(testCard);
+
+      const result = await gameManager.playCard(game.id, opponent.id, testCard.instanceId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Action Phase');
+    });
+
+    it('should deduct energy cost when playing card', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const testCard = createMockUnitCard(currentPlayer.id);
+      testCard.energyCost = 3;
+      currentPlayer.zones.hand.push(testCard);
+      currentPlayer.runePool.energy = 10;
+
+      await gameManager.playCard(game.id, currentPlayer.id, testCard.instanceId);
+
+      expect(currentPlayer.runePool.energy).toBe(7); // 10 - 3
+    });
+
+    it('should play spell card and move to trash', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const testSpell = createMockSpellCard(currentPlayer.id);
+      currentPlayer.zones.hand.push(testSpell);
+      currentPlayer.runePool.energy = 5;
+
+      const result = await gameManager.playCard(game.id, currentPlayer.id, testSpell.instanceId);
+
+      expect(result.success).toBe(true);
+      expect(currentPlayer.zones.hand).not.toContain(testSpell);
+      expect(currentPlayer.zones.trash).toContain(testSpell);
+      expect(testSpell.zone).toBe('trash');
+    });
+  });
+
+  describe('standardMove', () => {
+    it('should move a unit from base to battlefield', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      // Add test unit to base
+      const testUnit = createMockUnitCard(currentPlayer.id);
+      testUnit.ready = true;
+      testUnit.zone = 'base';
+      currentPlayer.zones.base.push(testUnit);
+
+      // Create a battlefield
+      const battlefield = createMockBattlefield();
+      game.battlefields.push(battlefield);
+
+      const result = await gameManager.standardMove(
+        game.id,
+        currentPlayer.id,
+        testUnit.instanceId,
+        battlefield.id
+      );
+
+      expect(result.success).toBe(true);
+      expect(currentPlayer.zones.base).not.toContain(testUnit);
+      expect(battlefield.units).toContain(testUnit);
+      expect(testUnit.ready).toBe(false); // Should be exhausted after move
+    });
+
+    it('should fail if unit is not ready', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const testUnit = createMockUnitCard(currentPlayer.id);
+      testUnit.ready = false; // Not ready
+      currentPlayer.zones.base.push(testUnit);
+
+      const battlefield = createMockBattlefield();
+      game.battlefields.push(battlefield);
+
+      const result = await gameManager.standardMove(
+        game.id,
+        currentPlayer.id,
+        testUnit.instanceId,
+        battlefield.id
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('must be ready');
+    });
+
+    it('should fail if not a unit', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const testSpell = createMockSpellCard(currentPlayer.id);
+      currentPlayer.zones.hand.push(testSpell);
+
+      const battlefield = createMockBattlefield();
+      game.battlefields.push(battlefield);
+
+      const result = await gameManager.standardMove(
+        game.id,
+        currentPlayer.id,
+        testSpell.instanceId,
+        battlefield.id
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Only units can move');
+    });
+
+    it('should fail if not player turn', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const opponentIndex = game.currentPlayerIndex === 0 ? 1 : 0;
+      const opponent = game.players[opponentIndex];
+      if (!opponent) throw new Error('No opponent');
+
+      const testUnit = createMockUnitCard(opponent.id);
+      testUnit.ready = true;
+      opponent.zones.base.push(testUnit);
+
+      const battlefield = createMockBattlefield();
+      game.battlefields.push(battlefield);
+
+      const result = await gameManager.standardMove(
+        game.id,
+        opponent.id,
+        testUnit.instanceId,
+        battlefield.id
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Not your turn');
+    });
+  });
+
+  describe('passPriority', () => {
+    it('should allow player to pass priority', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      if (!currentPlayer) throw new Error('No current player');
+
+      const result = await gameManager.passPriority(game.id, currentPlayer.id);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should fail if game not found', async () => {
+      const result = await gameManager.passPriority('invalid-game', 'player-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not found');
+    });
+
+    it('should fail if player not found', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      await gameManager.startGame(game.id);
+
+      const result = await gameManager.passPriority(game.id, 'invalid-player');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Player invalid-player not found');
+    });
+
+    it('should fail if game not in progress', async () => {
+      const players = createMockPlayers(2);
+      const decks = createMockDecks(players);
+      const game = await gameManager.createGame(players, decks);
+      // Don't start game
+
+      const result = await gameManager.passPriority(game.id, players[0]!.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not in progress');
+    });
+  });
 });
 
 // Helper functions
@@ -343,6 +627,16 @@ function createMockPlayer(id: string = uuidv4(), name: string = 'Test Player'): 
       mainDeck: Array.from({ length: 40 }, (_, i) => ({
         instanceId: uuidv4(),
         cardId: `card-${i}`,
+        id: `card-${i}`,
+        name: `Card ${i}`,
+        energyCost: 1,
+        powerCost: [],
+        description: '',
+        cardType: CardType.UNIT,
+        rarity: Rarity.COMMON,
+        domains: [Domain.FURY],
+        keywords: [],
+        tags: [],
         controllerId: id,
         ownerId: id,
         zone: 'mainDeck',
@@ -354,6 +648,16 @@ function createMockPlayer(id: string = uuidv4(), name: string = 'Test Player'): 
       runeDeck: Array.from({ length: 12 }, (_, i) => ({
         instanceId: uuidv4(),
         cardId: `rune-${i}`,
+        id: `rune-${i}`,
+        name: `Rune ${i}`,
+        energyCost: 0,
+        powerCost: [],
+        description: '',
+        cardType: CardType.RUNE,
+        rarity: Rarity.COMMON,
+        domains: [Domain.UNIVERSAL],
+        keywords: [],
+        tags: [],
         controllerId: id,
         ownerId: id,
         zone: 'runeDeck',
@@ -422,5 +726,87 @@ function createInvalidDeck(player: Player): Deck {
     validationErrors: [],
     createdAt: new Date(),
     updatedAt: new Date()
+  };
+}
+
+function createMockUnitCard(ownerId: string): any {
+  const id = `unit-${uuidv4()}`;
+  return {
+    instanceId: uuidv4(),
+    cardId: id,
+    id: id,
+    name: 'Test Unit',
+    energyCost: 2,
+    powerCost: [],
+    description: 'A test unit',
+    cardType: CardType.UNIT,
+    rarity: Rarity.COMMON,
+    domains: [Domain.FURY],
+    keywords: [],
+    tags: [],
+    might: 3,
+    subtypes: [],
+    abilities: [],
+    controllerId: ownerId,
+    ownerId: ownerId,
+    zone: 'hand',
+    position: 0,
+    ready: false,
+    damage: 0,
+    temporaryModifiers: [],
+    counters: []
+  };
+}
+
+function createMockSpellCard(ownerId: string): any {
+  const id = `spell-${uuidv4()}`;
+  return {
+    instanceId: uuidv4(),
+    cardId: id,
+    id: id,
+    name: 'Test Spell',
+    energyCost: 2,
+    powerCost: [],
+    description: 'A test spell',
+    cardType: CardType.SPELL,
+    rarity: Rarity.COMMON,
+    domains: [Domain.CALM],
+    keywords: [],
+    tags: [],
+    spellTiming: 'normal' as any,
+    targetRequirements: [],
+    effects: [],
+    controllerId: ownerId,
+    ownerId: ownerId,
+    zone: 'hand',
+    position: 0,
+    ready: false,
+    damage: 0,
+    temporaryModifiers: [],
+    counters: []
+  };
+}
+
+function createMockBattlefield(): any {
+  return {
+    id: `battlefield-${uuidv4()}`,
+    card: {
+      id: 'test-battlefield',
+      name: 'Test Battlefield',
+      energyCost: 0,
+      powerCost: [],
+      description: 'A test battlefield',
+      cardType: CardType.BATTLEFIELD,
+      rarity: Rarity.COMMON,
+      domains: [],
+      keywords: [],
+      tags: [],
+      battlefieldAbilities: [],
+      scoreValue: 1
+    },
+    units: [],
+    sides: {},
+    contested: false,
+    facedownCards: []
   };
 }
