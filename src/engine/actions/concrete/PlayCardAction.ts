@@ -112,9 +112,8 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
 
       } else {
         // Spells go on Chain
-        // TODO: Add to Chain when GameChain is implemented
-        // For now, resolve immediately
-        this.resolveSpell(game, card);
+        // ⭐ V3: Create ChainItem and add to game.chain
+        this.putSpellOnChain(game, card);
       }
 
       return this.executionSuccess(sideEffects, {
@@ -285,15 +284,63 @@ export class PlayCardAction extends GameAction<PlayCardActionData> {
   }
 
   /**
-   * Resolve spell effect.
+   * Put spell on Chain by creating a ChainItem.
    *
    * @private
    */
-  private resolveSpell(game: Game, card: GameCard): void {
-    // Spells will be executed via CardScriptRuntime externally
-    // Move to trash after resolution
-    card.zone = 'trash';
-    this.controller.zones.trash.push(card);
+  private putSpellOnChain(game: Game, card: GameCard): void {
+    const { v4: uuidv4 } = require('uuid');
+
+    // Get spell timing from keywords
+    const keywords = (card as any).keywords || [];
+    let spellTiming: any = 'normal';
+    if (keywords.includes('Reaction')) {
+      spellTiming = 'reaction';
+    } else if (keywords.includes('Action')) {
+      spellTiming = 'action';
+    }
+
+    // Create ChainItem
+    const chainItem: any = {
+      id: uuidv4(),
+      type: 'spell',
+      sourceCardId: card.cardId,
+      sourceCard: card, // Reference to actual card
+      controllerId: this.controller.id,
+      targets: this.convertTargetsToChainFormat(this.data.targets || []),
+      effects: [], // Empty - effects executed via CardScriptRuntime
+      spellTiming,
+      timestamp: new Date(),
+      resolved: false,
+    };
+
+    // Add to chain
+    game.chain = game.chain || [];
+    game.chain.push(chainItem);
+
+    // Set card zone to "chain" (temporary zone while on chain)
+    card.zone = 'chain' as any;
+
+    // Change turn state to Closed (Chain is now active)
+    const turnState = game.turnState as any;
+    if (turnState === 'neutral_open' || turnState === 'showdown_open') {
+      game.turnState = (turnState === 'neutral_open' ? 'neutral_closed' : 'showdown_closed') as any;
+    }
+  }
+
+  /**
+   * Convert target data to Chain target format.
+   *
+   * @private
+   */
+  private convertTargetsToChainFormat(targets: any[]): any[] {
+    return targets.map(t => ({
+      type: t.type || 'unit',
+      cardId: t.cardId,
+      playerId: t.playerId,
+      battlefieldId: t.battlefieldId,
+      restrictions: [],
+    }));
   }
 
   toHistoryEntry(): GameEvent {

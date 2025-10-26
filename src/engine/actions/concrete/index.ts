@@ -10,7 +10,9 @@
 export { DealDamageAction } from './DealDamageAction';
 export { DrawCardAction } from './DrawCardAction';
 export { PlayCardAction } from './PlayCardAction';
+export { CastSpellAction } from './CastSpellAction';
 export { MoveUnitAction } from './MoveUnitAction';
+export { StartCombatAction } from './StartCombatAction';
 
 // Resource actions
 export { AddEnergyAction } from './AddEnergyAction';
@@ -41,6 +43,7 @@ export { HealDamageAction } from './HealDamageAction';
 // Export action data types
 export type { DrawCardActionData } from './DrawCardAction';
 export type { PlayCardActionData } from './PlayCardAction';
+export type { CastSpellActionData } from './CastSpellAction';
 export type { MoveUnitActionData } from './MoveUnitAction';
 export type { ExhaustCardData } from './ExhaustCardAction';
 export type { ReadyCardData } from './ReadyCardAction';

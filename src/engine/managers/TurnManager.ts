@@ -39,10 +39,10 @@ export class TurnManager {
     this.scoringManager = new ScoringManager();
     this.priorityManager = new PriorityManager();
     this.battlefieldManager = new BattlefieldManager();
-    this.chainSystem = new ChainSystem();
+    this.chainSystem = new ChainSystem(scriptRuntime); // ⭐ V3: Pass CardScriptRuntime
     this.scriptRuntime = scriptRuntime;
     this.executor = executor;
-    this.combatManager = new CombatManager(this.priorityManager, scriptRuntime);
+    this.combatManager = new CombatManager(this.priorityManager, executor, scriptRuntime);
   }
 
   /**
@@ -494,9 +494,9 @@ export class TurnManager {
    * Check if there are pending Chain items
    * PUBLIC: GameManager uses this to decide when to advance phases
    */
-  public hasPendingChainItems(): boolean {
+  public hasPendingChainItems(game: Game): boolean {
     // Check if ChainSystem has items to resolve
-    return !this.chainSystem.isEmpty();
+    return !this.chainSystem.isEmpty(game);
   }
 
   /**
@@ -516,7 +516,7 @@ export class TurnManager {
     logger.debug('TurnManager: Checking for triggered events');
 
     // If chain has items, resolve them
-    if (!this.chainSystem.isEmpty()) {
+    if (!this.chainSystem.isEmpty(game)) {
       logger.info('TurnManager: Resolving chain after action');
       await this.chainSystem.resolve(game);
     }

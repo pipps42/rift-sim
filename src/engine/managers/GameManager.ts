@@ -936,7 +936,7 @@ export class GameManager {
       await this.onStateChanged(game);
 
       // Check if we should advance phase
-      if (!turnManager.hasPendingShowdowns(game) && !turnManager.hasPendingChainItems()) {
+      if (!turnManager.hasPendingShowdowns(game) && !turnManager.hasPendingChainItems(game)) {
         logger.debug('GameManager: No pending actions, caller should advance to next phase');
       }
 

@@ -14,6 +14,10 @@ import {
 import { eventBus, GameEventFactory } from '../events';
 import { PriorityManager } from '../managers/PriorityManager';
 import { CardScriptRuntime } from '../scripting/CardScriptRuntime';
+import { ActionExecutor } from '../actions/ActionExecutor';
+import { DealDamageAction } from '../actions/concrete/DealDamageAction';
+import { StartCombatAction } from '../actions/concrete/StartCombatAction';
+import type { CombatStartData } from '../actions/triggers/OnCombatStartTrigger';
 import { logger } from '@/utils/logger';
 
 /**
@@ -29,9 +33,15 @@ import { logger } from '@/utils/logger';
 export class CombatManager {
   private priorityManager: PriorityManager;
   private scriptRuntime: CardScriptRuntime;
+  private executor: ActionExecutor;
 
-  constructor(priorityManager: PriorityManager, scriptRuntime?: CardScriptRuntime) {
+  constructor(
+    priorityManager: PriorityManager,
+    executor: ActionExecutor,
+    scriptRuntime?: CardScriptRuntime
+  ) {
     this.priorityManager = priorityManager;
+    this.executor = executor;
     this.scriptRuntime = scriptRuntime as CardScriptRuntime;
   }
 
@@ -146,11 +156,47 @@ export class CombatManager {
       return;
     }
 
-    // Get units for each side (await for onAttack hooks)
-    const attackingUnits = await this.prepareAttackingUnits(game, battlefield, attackingPlayer);
+    // Get units for each side
+    const attackingUnits = this.prepareAttackingUnits(game, battlefield, attackingPlayer);
     const defendingUnits = this.prepareDefendingUnits(game, battlefield, defendingPlayer);
 
-    // Create combat state
+    // Get actual GameCard instances for trigger data
+    const attackers = battlefield.units.filter(u => u.controllerId === attackingPlayer);
+    const defenders = battlefield.units.filter(u => u.controllerId === defendingPlayer);
+
+    // ⭐ Execute StartCombatAction for each attacking unit (fires "when I attack" triggers)
+    for (const attacker of attackers) {
+      const combatData: CombatStartData = {
+        participant: attacker,
+        isAttacker: true,
+        battlefieldId: battlefield.id,
+        attackers,
+        defenders,
+        opposingPlayerId: defendingPlayer
+      };
+
+      const attackingPlayerObj = game.players.find(p => p.id === attackingPlayer)!;
+      const startCombatAction = new StartCombatAction(attackingPlayerObj, combatData);
+      await this.executor.execute(startCombatAction);
+    }
+
+    // ⭐ Execute StartCombatAction for each defending unit (fires "when I defend" triggers)
+    for (const defender of defenders) {
+      const combatData: CombatStartData = {
+        participant: defender,
+        isAttacker: false,
+        battlefieldId: battlefield.id,
+        attackers,
+        defenders,
+        opposingPlayerId: attackingPlayer
+      };
+
+      const defendingPlayerObj = game.players.find(p => p.id === defendingPlayer)!;
+      const startCombatAction = new StartCombatAction(defendingPlayerObj, combatData);
+      await this.executor.execute(startCombatAction);
+    }
+
+    // Create combat state (after triggers have fired, so modifiers are applied)
     game.combatState = {
       battlefield: battlefield.id,
       attackingPlayer,
@@ -269,6 +315,11 @@ export class CombatManager {
 
   /**
    * Calculate damage distribution with Tank priority
+   *
+   * From RULES.md: "Ogni unità deve ricevere danno letale prima di passare alla successiva"
+   * (Each unit must receive lethal damage before moving to the next)
+   *
+   * Overkill damage IS allowed - a unit can take more damage than its might.
    */
   private calculateDamageDistribution(
     units: CombatUnit[],
@@ -286,35 +337,39 @@ export class CombatManager {
     for (const unit of tankUnits) {
       if (remainingDamage <= 0) break;
 
-      const damageToAssign = Math.min(remainingDamage, unit.might);
+      // Assign damage to this unit
+      const damageToAssign = remainingDamage;
       distribution.push({
         targetCardId: unit.cardId,
         damage: damageToAssign,
         isLethalDamage: damageToAssign >= unit.might
       });
 
-      remainingDamage -= damageToAssign;
+      // All remaining damage goes to this unit (overkill allowed)
+      remainingDamage = 0;
+      break; // Only one Tank unit takes damage per combat
     }
 
-    // Then damage non-Tank units
-    for (const unit of nonTankUnits) {
-      if (remainingDamage <= 0) break;
+    // Then damage non-Tank units (if no Tank took all damage)
+    if (remainingDamage > 0 && nonTankUnits.length > 0) {
+      const unit = nonTankUnits[0]!; // First non-Tank unit (safe because length > 0)
 
-      const damageToAssign = Math.min(remainingDamage, unit.might);
+      // Assign damage to this unit
+      const damageToAssign = remainingDamage;
       distribution.push({
         targetCardId: unit.cardId,
         damage: damageToAssign,
         isLethalDamage: damageToAssign >= unit.might
       });
 
-      remainingDamage -= damageToAssign;
+      remainingDamage = 0;
     }
 
     return distribution;
   }
 
   /**
-   * Apply damage to actual game units
+   * Apply damage to actual game units using V3 DealDamageAction
    */
   private async applyDamageToUnits(game: Game): Promise<void> {
     if (!game.combatState?.damageDistribution) return;
@@ -322,15 +377,38 @@ export class CombatManager {
     const battlefield = game.battlefields.find(b => b.id === game.combatState!.battlefield);
     if (!battlefield) return;
 
-    for (const damage of game.combatState.damageDistribution) {
-      const unit = battlefield.units.find(u => u.cardId === damage.targetCardId);
+    // Find the attacking player to use as action controller
+    const attackingPlayer = game.players.find(p => p.id === game.combatState!.attackingPlayer);
+    if (!attackingPlayer) {
+      logger.error('CombatManager: Attacking player not found');
+      return;
+    }
+
+    // Apply damage using V3 DealDamageAction for each distribution
+    for (const dmg of game.combatState.damageDistribution) {
+      const unit = battlefield.units.find(u => u.cardId === dmg.targetCardId);
       if (unit) {
-        unit.damage += damage.damage;
+        // Use V3 DealDamageAction instead of direct mutation
+        const damageAction = new DealDamageAction(
+          attackingPlayer,
+          {
+            target: unit,
+            amount: dmg.damage,
+            damageType: 'combat'
+            // source is optional - in combat, damage comes from multiple units
+          }
+        );
 
-        logger.debug(`CombatManager: Applied ${damage.damage} damage to unit ${unit.instanceId} (total: ${unit.damage}/${unit.damage})`);
+        const result = await this.executor.execute(damageAction);
 
-        if (damage.isLethalDamage) {
-          logger.info(`CombatManager: Unit ${unit.instanceId} received lethal damage`);
+        if (result.success) {
+          logger.debug(`CombatManager: Applied ${dmg.damage} damage to unit ${unit.instanceId} via V3 (total: ${unit.damage}/${unit.might ?? 0})`);
+
+          if (dmg.isLethalDamage) {
+            logger.info(`CombatManager: Unit ${unit.instanceId} received lethal damage`);
+          }
+        } else {
+          logger.error(`CombatManager: Failed to apply damage to ${unit.instanceId}:`, result.error);
         }
       }
     }
@@ -357,22 +435,14 @@ export class CombatManager {
   }
 
   /**
-   * Prepare attacking units with combat bonuses and execute onAttack hooks
+   * Prepare attacking units with combat bonuses
+   * ⭐ V3: Triggers are now handled by StartCombatAction in initiateCombat()
    */
-  private async prepareAttackingUnits(game: Game, battlefield: Battlefield, attackingPlayer: string): Promise<CombatUnit[]> {
+  private prepareAttackingUnits(game: Game, battlefield: Battlefield, attackingPlayer: string): CombatUnit[] {
     const units = battlefield.units.filter(u => u.controllerId === attackingPlayer);
     const combatUnits: CombatUnit[] = [];
 
-    // Execute onAttack hooks BEFORE calculating combat stats
-    // This allows cards like Yasuo to trigger effects "when I attack"
-    for (const unit of units) {
-      const owner = game.players.find(p => p.id === unit.controllerId);
-      if (owner) {
-        await this.executeOnAttackHook(game, owner, unit, battlefield);
-      }
-    }
-
-    // Now prepare combat stats
+    // Prepare combat stats for each attacking unit
     for (const unit of units) {
       const combatUnit: CombatUnit = {
         cardId: unit.cardId,
@@ -386,10 +456,11 @@ export class CombatManager {
 
       // Apply Assault bonus
       if (combatUnit.hasAssaultBonus) {
-        // TODO: Get actual Assault value from card
-        const assaultBonus = 2; // Placeholder
-        combatUnit.might += assaultBonus;
-        logger.debug(`CombatManager: Unit ${unit.instanceId} gains +${assaultBonus} from Assault`);
+        const assaultBonus = this.getKeywordValue(unit, Keyword.ASSAULT);
+        if (assaultBonus > 0) {
+          combatUnit.might += assaultBonus;
+          logger.debug(`CombatManager: Unit ${unit.instanceId} gains +${assaultBonus} from Assault`);
+        }
       }
 
       combatUnits.push(combatUnit);
@@ -417,10 +488,11 @@ export class CombatManager {
 
       // Apply Shield bonus
       if (combatUnit.hasShieldBonus) {
-        // TODO: Get actual Shield value from card
-        const shieldBonus = 2; // Placeholder
-        combatUnit.might += shieldBonus;
-        logger.debug(`CombatManager: Unit ${unit.instanceId} gains +${shieldBonus} from Shield`);
+        const shieldBonus = this.getKeywordValue(unit, Keyword.SHIELD);
+        if (shieldBonus > 0) {
+          combatUnit.might += shieldBonus;
+          logger.debug(`CombatManager: Unit ${unit.instanceId} gains +${shieldBonus} from Shield`);
+        }
       }
 
       return combatUnit;
@@ -478,18 +550,17 @@ export class CombatManager {
    * Get unit Might value
    */
   private getUnitMight(unit: GameCard): number {
-    // TODO: Get actual Might from card definition
-    // For now, return placeholder
-    return 3; // Placeholder
+    // Get actual Might from GameCard
+    // Might is optional on GameCard, default to 0 if not present
+    return unit.might ?? 0;
   }
 
   /**
    * Get unit keywords
    */
   private getUnitKeywords(unit: GameCard): Keyword[] {
-    // TODO: Get actual keywords from card definition
-    // For now, return empty array
-    return [];
+    // Get actual keywords from GameCard
+    return unit.keywords || [];
   }
 
   /**
@@ -498,6 +569,22 @@ export class CombatManager {
   private hasKeyword(unit: GameCard, keyword: Keyword): boolean {
     const keywords = this.getUnitKeywords(unit);
     return keywords.includes(keyword);
+  }
+
+  /**
+   * Get numeric value associated with a keyword (e.g., Assault 2, Shield 3)
+   *
+   * For now, returns 1 if keyword is present (default value).
+   * TODO: Read actual values from card metadata when keyword values are implemented
+   */
+  private getKeywordValue(unit: GameCard, keyword: Keyword): number {
+    if (!this.hasKeyword(unit, keyword)) {
+      return 0;
+    }
+
+    // TODO: When keyword values are stored on cards, read from there
+    // For now, return default value of 1
+    return 1;
   }
 
   /**
@@ -521,32 +608,4 @@ export class CombatManager {
     };
   }
 
-  /**
-   * Execute onAttack hook for an attacking unit
-   */
-  private async executeOnAttackHook(
-    game: Game,
-    owner: Player,
-    unit: GameCard,
-    battlefield: Battlefield
-  ): Promise<void> {
-    // Skip hook execution if scriptRuntime not available
-    if (!this.scriptRuntime) {
-      return;
-    }
-
-    try {
-      // CardScriptRuntime.executeHook handles loading the script, checking the hook, and building context
-      await this.scriptRuntime.executeHook('onAttack', unit as any, game, {
-        eventData: {
-          targetBattlefield: battlefield.id,
-          defendingUnits: battlefield.units.filter(u => u.controllerId !== owner.id),
-        },
-      });
-      logger.debug(`CombatManager: Executed onAttack for ${unit.name}`);
-    } catch (error) {
-      // Script not found or hook failed - log warning but continue
-      logger.warn(`CombatManager: Failed to execute onAttack for card ${unit.cardId}:`, error);
-    }
-  }
 }

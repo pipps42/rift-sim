@@ -6,10 +6,12 @@ import {
   TurnState,
   GamePhase,
   EventType,
-  GameEvent
+  GameEvent,
+  GameCard,
+  Player,
 } from '@/types/game';
 import { eventBus, GameEventFactory } from '../events';
-import { EffectSystem } from './EffectSystem';
+import { CardScriptRuntime } from '../scripting/CardScriptRuntime';
 import { logger } from '@/utils/logger';
 
 /**
@@ -20,13 +22,17 @@ import { logger } from '@/utils/logger';
  * - After each resolution, perform Cleanup
  * - Triggered abilities can add to chain during resolution
  * - Timing determines when items can be added (Normal/Action/Reaction)
+ *
+ * ⭐ V3 Integration:
+ * - Uses CardScriptRuntime to execute spell/ability scripts (not EffectSystem)
+ * - Cleanup calls game.processDeaths() (ActionExecutor Phase 7)
+ * - Triggered abilities handled by TriggerRegistry
  */
 export class ChainSystem {
-  private chain: ChainItem[] = [];
-  private effectSystem: EffectSystem;
+  private cardScriptRuntime: CardScriptRuntime;
 
-  constructor() {
-    this.effectSystem = new EffectSystem();
+  constructor(cardScriptRuntime: CardScriptRuntime) {
+    this.cardScriptRuntime = cardScriptRuntime;
   }
 
   /**
@@ -40,7 +46,8 @@ export class ChainSystem {
     }
 
     // Add to chain (top of stack)
-    this.chain.push(item);
+    game.chain = game.chain || [];
+    game.chain.push(item);
 
     // Change turn state to Closed
     const wasOpen = game.turnState === TurnState.NEUTRAL_OPEN || game.turnState === TurnState.SHOWDOWN_OPEN;
@@ -50,7 +57,7 @@ export class ChainSystem {
         : TurnState.SHOWDOWN_CLOSED;
     }
 
-    logger.info(`ChainSystem: Added ${item.type} (${item.id}) to chain. Chain depth: ${this.chain.length}`);
+    logger.info(`ChainSystem: Added ${item.type} (${item.id}) to chain. Chain depth: ${game.chain.length}`);
 
     return true;
   }
@@ -60,18 +67,19 @@ export class ChainSystem {
    * Resolves items one by one from top to bottom with Cleanup after each
    */
   async resolve(game: Game): Promise<void> {
-    logger.info(`ChainSystem: Starting chain resolution. Chain depth: ${this.chain.length}`);
+    game.chain = game.chain || [];
+    logger.info(`ChainSystem: Starting chain resolution. Chain depth: ${game.chain.length}`);
 
-    while (!this.isEmpty()) {
+    while (!this.isEmpty(game)) {
       // Get the top item (last added)
-      const item = this.peek();
+      const item = this.peek(game);
       if (!item) break;
 
       // Resolve the top item
       await this.resolveChainItem(game, item);
 
       // Remove from chain
-      this.chain.pop();
+      game.chain.pop();
 
       // Perform Cleanup after resolution
       await this.performCleanup(game);
@@ -91,36 +99,36 @@ export class ChainSystem {
   /**
    * Peek at the top item without removing it
    */
-  peek(): ChainItem | undefined {
-    return this.chain[this.chain.length - 1];
+  peek(game: Game): ChainItem | undefined {
+    return game.chain?.[game.chain.length - 1];
   }
 
   /**
    * Check if chain is empty
    */
-  isEmpty(): boolean {
-    return this.chain.length === 0;
+  isEmpty(game: Game): boolean {
+    return !game.chain || game.chain.length === 0;
   }
 
   /**
    * Get current chain depth
    */
-  getDepth(): number {
-    return this.chain.length;
+  getDepth(game: Game): number {
+    return game.chain?.length || 0;
   }
 
   /**
    * Get the entire chain (for display purposes)
    */
-  getChain(): ReadonlyArray<ChainItem> {
-    return [...this.chain];
+  getChain(game: Game): ReadonlyArray<ChainItem> {
+    return [...(game.chain || [])];
   }
 
   /**
    * Clear the chain (for emergency cleanup)
    */
-  clear(): void {
-    this.chain = [];
+  clear(game: Game): void {
+    game.chain = [];
     logger.warn('ChainSystem: Chain forcibly cleared');
   }
 
@@ -174,6 +182,8 @@ export class ChainSystem {
 
   /**
    * Resolve a single chain item
+   *
+   * ⭐ V3: Executes card script via CardScriptRuntime instead of EffectSystem
    */
   private async resolveChainItem(game: Game, item: ChainItem): Promise<void> {
     logger.info(`ChainSystem: Resolving ${item.type} (${item.id}) from ${item.controllerId}`);
@@ -187,9 +197,48 @@ export class ChainSystem {
     // Mark as resolved
     item.resolved = true;
 
-    // Execute effects
-    for (const effect of item.effects) {
-      await this.executeEffect(game, item, effect);
+    // Get controller player
+    const controller = game.players.find(p => p.id === item.controllerId);
+    if (!controller) {
+      logger.error(`ChainSystem: Controller ${item.controllerId} not found`);
+      return;
+    }
+
+    // Get source card
+    const card = item.sourceCard;
+    if (!card) {
+      logger.warn(`ChainSystem: No source card for chain item ${item.id}`);
+      return;
+    }
+
+    // ⭐ V3: Execute card script via CardScriptRuntime
+    try {
+      // Load script
+      const scriptId = card.scriptPath
+        ? card.scriptPath.replace('cards/', '').replace('.ts', '')
+        : card.cardId;
+
+      const script = await this.cardScriptRuntime.getLoader().loadScript(scriptId);
+
+      if (script && script.onPlay) {
+        // Build context with targets
+        const context = await this.buildCardContext(game, controller, card, script, item.targets);
+
+        // Execute onPlay hook
+        await this.cardScriptRuntime.executeHook('onPlay', card as any, game, context);
+
+        logger.debug(`ChainSystem: Executed onPlay for ${card.name}`);
+      }
+
+    } catch (error) {
+      logger.error(`ChainSystem: Failed to execute script for ${item.id}:`, error);
+    } finally {
+      // Move spell card to trash after resolution (always, even if script failed)
+      if (item.type === ChainItemType.SPELL) {
+        card.zone = 'trash';
+        controller.zones.trash = controller.zones.trash || [];
+        controller.zones.trash.push(card);
+      }
     }
 
     // Emit resolution event based on type
@@ -233,32 +282,58 @@ export class ChainSystem {
   }
 
   /**
-   * Execute a single effect
+   * Build card context for script execution.
+   *
+   * ⭐ V3: Adapted from GameManager.buildCardContext
    */
-  private async executeEffect(game: Game, item: ChainItem, effect: any): Promise<void> {
-    // Delegate to EffectSystem
-    await this.effectSystem.executeEffect(
+  private async buildCardContext(
+    game: Game,
+    player: Player,
+    card: GameCard,
+    script: any,
+    targets?: any[]
+  ): Promise<any> {
+    return {
+      card,
+      owner: player,
+      controller: player, // For now, controller = owner
       game,
-      effect,
-      item.sourceCardId || '',
-      item.controllerId
-    );
+      targets: targets || [],
+      metadata: script.metadata || {},
+      actions: {} as any, // ActionExecutor will inject this
+      modifiers: {} as any, // ModifierRegistry will inject this
+      triggers: {} as any, // TriggerRegistry will inject this
+      log: {
+        info: (msg: string) => logger.info(`[${card.name}] ${msg}`),
+        debug: (msg: string) => logger.debug(`[${card.name}] ${msg}`),
+        warn: (msg: string) => logger.warn(`[${card.name}] ${msg}`),
+        error: (msg: string) => logger.error(`[${card.name}] ${msg}`),
+      },
+    };
   }
 
   /**
    * Perform Cleanup after chain item resolution
+   *
+   * ⭐ V3: Calls game.processDeaths() to handle state-based actions
    */
   private async performCleanup(game: Game): Promise<void> {
-    // TODO: Implement full cleanup logic
-    // Cleanup steps:
-    // 1. Kill units with damage >= Might
+    logger.debug('ChainSystem: Performing cleanup');
+
+    // 1. Process deaths (state-based action)
+    // Units with damage >= might are killed and moved to trash
+    if (game.processDeaths) {
+      await game.processDeaths();
+    }
+
+    // TODO: Implement remaining cleanup steps:
     // 2. Remove Attacker/Defender status from units not in combat
     // 3. Activate state-based effects
     // 4. Remove hidden cards from uncontrolled battlefields
     // 5. Mark Combat as Pending where necessary
     // 6. Trigger Showdowns/Combat if needed in Neutral Open
 
-    logger.debug('ChainSystem: Performed cleanup (placeholder)');
+    logger.debug('ChainSystem: Cleanup completed');
   }
 
   /**
@@ -277,11 +352,12 @@ export class ChainSystem {
   /**
    * Get statistics about the chain
    */
-  getStats(): {
+  getStats(game: Game): {
     depth: number;
     itemsByType: Record<ChainItemType, number>;
     itemsByPlayer: Record<string, number>;
   } {
+    const chain = game.chain || [];
     const itemsByType: Record<ChainItemType, number> = {
       [ChainItemType.SPELL]: 0,
       [ChainItemType.ACTIVATED_ABILITY]: 0,
@@ -290,7 +366,7 @@ export class ChainSystem {
 
     const itemsByPlayer: Record<string, number> = {};
 
-    for (const item of this.chain) {
+    for (const item of chain) {
       // Count by type
       itemsByType[item.type]++;
 
@@ -299,7 +375,7 @@ export class ChainSystem {
     }
 
     return {
-      depth: this.chain.length,
+      depth: chain.length,
       itemsByType,
       itemsByPlayer
     };
