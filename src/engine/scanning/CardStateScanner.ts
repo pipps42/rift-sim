@@ -16,6 +16,7 @@ import { GamePhase, Keyword } from '../../types/game';
 import type { CardScript, CardContext } from '../scripting/types/CardScriptTypes';
 import type { CardScriptRuntime } from '../scripting/CardScriptRuntime';
 import type { ModifierRegistry } from '../actions/ModifierRegistry';
+import type { TargetingSystem } from '../systems/TargetingSystem';
 import type {
   CardScanResult,
   ScanDelta,
@@ -37,6 +38,7 @@ export class CardStateScanner {
   constructor(
     private cardScriptRuntime: CardScriptRuntime,
     private modifierRegistry: ModifierRegistry,
+    private targetingSystem: TargetingSystem,
   ) {}
 
   /**
@@ -177,6 +179,25 @@ export class CardStateScanner {
         const check = this.checkConstraint(constraint, ctx);
         if (!check.satisfied) {
           return { canPlay: false, reason: check.reason ?? 'Constraint not satisfied' };
+        }
+      }
+    }
+
+    // Check target requirements - card must have valid targets available
+    if (script.metadata?.targetRequirements && script.metadata.targetRequirements.length > 0) {
+      // Check if there are any required (non-optional) target requirements
+      const hasRequiredTargets = script.metadata.targetRequirements.some(req => !req.optional);
+
+      if (hasRequiredTargets) {
+        const validTargets = this.targetingSystem.getValidTargets(
+          game,
+          owner.id,
+          script.metadata.targetRequirements
+        );
+
+        // Card is unplayable if it has required targets but no valid targets are available
+        if (validTargets.length === 0) {
+          return { canPlay: false, reason: 'No valid targets' };
         }
       }
     }

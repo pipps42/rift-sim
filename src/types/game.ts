@@ -394,7 +394,8 @@ export enum TargetType {
   PLAYER = 'player',
   BATTLEFIELD = 'battlefield',
   CARD_IN_HAND = 'card_in_hand',
-  CARD_IN_TRASH = 'card_in_trash'
+  CARD_IN_TRASH = 'card_in_trash',
+  CHAIN_ITEM = 'chain_item'
 }
 
 export interface TargetRequirement {
