@@ -20,7 +20,7 @@ import {
   DrawCardAction,
   AddEnergyAction,
   AddPowerAction,
-  MoveCardAction,
+  MoveUnitAction,
   ExhaustCardAction,
   ReadyCardAction,
   DiscardCardAction,
@@ -108,12 +108,9 @@ export class V3ActionsAPI implements ActionsAPI {
   }
 
   async moveCard(card: GameCard, fromZone: string, toZone: string): Promise<void> {
-    const action = new MoveCardAction(
-      this.controller,
-      { card, fromZone: fromZone as any, toZone: toZone as any },
-      this.sourceCard
-    );
-    await this.executor.execute(action, this.game);
+    // TODO: Generic MoveCardAction not yet implemented
+    // For now, directly mutate (will be replaced with proper V3 action)
+    throw new Error('moveCard not yet implemented - use specific actions like moveUnit instead');
   }
 
   async exhaustCard(card: GameCard): Promise<void> {
