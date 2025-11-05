@@ -10,7 +10,7 @@
  * - Scripts execute in main Node.js process (no isolated-vm)
  */
 
-import type { Game, GameCard, Player, Card } from '../../../types/game';
+import type { Game, GameCard, Player, Card, ChainItem } from '../../../types/game';
 import type { CardMetadata } from '../../scanning/types/ScanTypes';
 
 // ============================================================================
@@ -48,8 +48,9 @@ export interface CardContext {
   /**
    * Selected targets (if any).
    * Populated when card has targeted abilities.
+   * Can include cards, players, battlefields, or chain items.
    */
-  targets?: GameCard[];
+  targets?: (GameCard | Player | ChainItem | any)[];
 
   /**
    * Event-specific data.

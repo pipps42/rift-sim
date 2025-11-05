@@ -110,6 +110,12 @@ export interface PendingTrigger {
 
 export interface CardMetadata {
   /**
+   * Target requirements for this card
+   * Example: "Target a unit with 3 or less Might"
+   */
+  targetRequirements?: import('../../../types/game').TargetRequirement[];
+
+  /**
    * Cost modifiers applied to this card
    * Example: "Costs 1 less for each unit you control"
    */

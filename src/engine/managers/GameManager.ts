@@ -13,6 +13,8 @@ import { ActionExecutor } from '../actions/ActionExecutor';
 import { TurnManager } from './TurnManager';
 import { SpendEnergyAction, SpendPowerAction, PlayCardAction, MoveUnitAction, HideCardAction } from '../actions/concrete';
 import type { ScanDelta, ActivatedAbilityInfo } from '../scanning/types/ScanTypes';
+import { TargetingSystem } from '../systems/TargetingSystem';
+import type { Target } from '@/types/game';
 
 /**
  * Central orchestrator for all Riftbound game operations
@@ -34,9 +36,13 @@ export class GameManager {
   // ⭐ NEW: Turn management - one turn manager per game
   private turnManagers: Map<string, TurnManager> = new Map(); // One turn manager per game
 
+  // ⭐ NEW: Targeting system for validation and resolution
+  private targetingSystem: TargetingSystem;
+
   constructor() {
     this.deckValidator = new DeckValidator();
     this.gameSetup = new GameSetup();
+    this.targetingSystem = new TargetingSystem();
 
     // Initialize card script runtime
     this.cardScriptRuntime = new CardScriptRuntime({
@@ -113,7 +119,7 @@ export class GameManager {
     this.games.set(game.id, game);
 
     // ⭐ NEW: Create scanner for this game
-    const scanner = new CardStateScanner(this.cardScriptRuntime, this.modifierRegistry);
+    const scanner = new CardStateScanner(this.cardScriptRuntime, this.modifierRegistry, this.targetingSystem);
     this.scanners.set(game.id, scanner);
 
     // ⭐ NEW: Create V3 ActionExecutor for this game
@@ -419,7 +425,7 @@ export class GameManager {
     gameId: string,
     playerId: string,
     cardInstanceId: string,
-    targets?: any[]
+    targets?: Target[]
   ): Promise<{ success: boolean; error?: string; data?: any }> {
     const game = this.games.get(gameId);
     if (!game) {
@@ -449,6 +455,42 @@ export class GameManager {
         return { success: false, error: 'Game executor not initialized' };
       }
 
+      // ⭐ NEW: Load script early to get target requirements
+      let script;
+      try {
+        const scriptId = card.scriptPath
+          ? card.scriptPath.replace('cards/', '').replace('.ts', '')
+          : card.cardId;
+        script = await this.cardScriptRuntime.getLoader().loadScript(scriptId);
+      } catch (error) {
+        // No script found - card has no scripted behavior
+        script = null;
+      }
+
+      // ⭐ NEW: Validate and resolve targets if card has target requirements
+      let resolvedTargets: any[] = [];
+      if (script?.metadata?.targetRequirements && script.metadata.targetRequirements.length > 0) {
+        const requirements = script.metadata.targetRequirements;
+        const selectedTargets = targets || [];
+
+        // Validate targets
+        const validation = this.targetingSystem.validateTargets(
+          game,
+          playerId,
+          requirements,
+          selectedTargets
+        );
+
+        if (!validation.valid) {
+          const errorMessages = validation.errors?.map(e => e.message).join(', ') || 'Invalid targets';
+          return { success: false, error: errorMessages };
+        }
+
+        // Resolve targets (convert IDs to actual game objects)
+        const resolved = this.targetingSystem.resolveTargets(game, selectedTargets);
+        resolvedTargets = resolved.map(r => r.resolved);
+      }
+
       // Delegate to PlayCardAction (handles cost payment + zone movement)
       const playActionData: { card: GameCard; targets?: any[] } = { card };
       if (targets) {
@@ -464,21 +506,10 @@ export class GameManager {
         };
       }
 
-      // Load and execute card script
-      let script;
-      try {
-        const scriptId = card.scriptPath
-          ? card.scriptPath.replace('cards/', '').replace('.ts', '')
-          : card.cardId;
-        script = await this.cardScriptRuntime.getLoader().loadScript(scriptId);
-      } catch (error) {
-        // No script found - card has no scripted behavior
-        script = null;
-      }
-
       // Execute hooks based on card type
       if (script) {
-        const context = await this.buildCardContext(game, player, card, script, targets);
+        // ⭐ UPDATED: Pass resolved targets to context
+        const context = await this.buildCardContext(game, player, card, script, resolvedTargets);
 
         // Execute onPlay hook (all cards)
         if (script.onPlay) {
@@ -944,6 +975,63 @@ export class GameManager {
 
     } catch (error) {
       logger.error(`GameManager: Error passing priority:`, error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  // ============================================================================
+  // ⭐ TARGETING METHODS
+  // ============================================================================
+
+  /**
+   * Get valid targets for a card
+   *
+   * Used by UI to show which targets can be selected
+   */
+  async getValidTargets(
+    gameId: string,
+    playerId: string,
+    cardInstanceId: string
+  ): Promise<{ success: boolean; error?: string; targets?: any[] }> {
+    const game = this.games.get(gameId);
+    if (!game) {
+      return { success: false, error: `Game ${gameId} not found` };
+    }
+
+    // Find card in game
+    const card = this.findCardInGame(game, cardInstanceId);
+    if (!card) {
+      return { success: false, error: `Card ${cardInstanceId} not found` };
+    }
+
+    try {
+      // Load card script to get target requirements
+      let script;
+      try {
+        const scriptId = card.scriptPath
+          ? card.scriptPath.replace('cards/', '').replace('.ts', '')
+          : card.cardId;
+        script = await this.cardScriptRuntime.getLoader().loadScript(scriptId);
+      } catch (error) {
+        // No script = no targets needed
+        return { success: true, targets: [] };
+      }
+
+      // Check if card has target requirements
+      if (!script?.metadata?.targetRequirements || script.metadata.targetRequirements.length === 0) {
+        return { success: true, targets: [] };
+      }
+
+      // Get valid targets from targeting system
+      const validTargets = this.targetingSystem.getValidTargets(
+        game,
+        playerId,
+        script.metadata.targetRequirements
+      );
+
+      return { success: true, targets: validTargets };
+    } catch (error) {
+      logger.error(`GameManager: Error getting valid targets:`, error);
       return { success: false, error: String(error) };
     }
   }

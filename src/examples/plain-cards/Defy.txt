@@ -10,4 +10,4 @@ Might
 0
 Description
 REACTION (Play any time, even before spells and abilities resolve.)
-Counter a spell that costs no more than 4 and no more than rune.
+Counter a spell that costs no more than 4 Energy and no more than 1 Power.
