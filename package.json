@@ -1,76 +1,40 @@
 {
-  "name": "riftbound-simulator",
+  "name": "riftbound-monorepo",
   "version": "1.0.0",
-  "description": "Backend Node.js + TypeScript simulator for Riftbound TCG (League of Legends card game)",
-  "main": "dist/index.js",
+  "private": true,
+  "description": "Monorepo for Riftbound TCG - Backend engine + Frontend React app",
   "type": "module",
   "scripts": {
-    "build": "tsc && tsc-alias",
-    "dev": "ts-node-esm --respawn src/index.ts",
-    "start": "node dist/index.js",
-    "play": "tsx --tsconfig tsconfig.json src/cli/index.ts",
-    "lint": "echo 'ESLint configuration skipped for now'",
-    "lint:fix": "echo 'ESLint configuration skipped for now'",
-    "format": "prettier --write src/**/*.ts",
-    "test": "jest",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @riftbound/backend dev",
+    "dev:frontend": "pnpm --filter @riftbound/frontend dev",
+    "start": "pnpm --filter @riftbound/backend start",
+    "play": "pnpm --filter @riftbound/backend play",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"packages/**/*.{ts,tsx}\"",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @riftbound/backend db:generate",
+    "db:migrate": "pnpm --filter @riftbound/backend db:migrate",
+    "db:seed": "pnpm --filter @riftbound/backend db:seed",
+    "db:studio": "pnpm --filter @riftbound/backend db:studio",
+    "db:reset": "pnpm --filter @riftbound/backend db:reset"
   },
   "keywords": [
     "tcg",
     "riftbound",
     "league-of-legends",
     "card-game",
-    "simulator"
+    "simulator",
+    "monorepo"
   ],
   "author": "",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.16.3",
-    "@types/uuid": "^10.0.0",
-    "chalk": "^4.1.2",
-    "chokidar": "^4.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.2",
-    "express": "^5.1.0",
-    "helmet": "^8.1.0",
-    "ioredis": "^5.8.0",
-    "isolated-vm": "^5.0.4",
-    "pg": "^8.16.3",
-    "socket.io": "^4.8.1",
-    "uuid": "^13.0.0"
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
-    "@types/chokidar": "^1.7.5",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^24.5.2",
-    "@types/pg": "^8.15.5",
-    "@typescript-eslint/eslint-plugin": "^8.44.1",
-    "@typescript-eslint/parser": "^8.44.1",
-    "eslint": "^9.36.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.4",
-    "jest": "^30.2.0",
-    "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
-    "prisma": "^6.16.3",
-    "ts-jest": "^29.4.4",
-    "ts-node-dev": "^2.0.0",
-    "tsc-alias": "^1.8.16",
-    "tsconfig-paths": "^4.2.0",
-    "tsx": "^4.20.6",
     "typescript": "^5.9.2"
   }
 }

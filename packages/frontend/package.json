@@ -1,0 +1,20 @@
+{
+  "name": "@riftbound/frontend",
+  "version": "1.0.0",
+  "description": "React + TypeScript frontend for Riftbound TCG",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Frontend not yet setup - will be configured in Phase 3'",
+    "build": "echo 'Frontend not yet setup'",
+    "preview": "echo 'Frontend not yet setup'"
+  },
+  "keywords": [
+    "tcg",
+    "riftbound",
+    "frontend",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,16 @@
+Darius, Trifarian
+Unit
+Champion Unit
+Rare
+Fury
+Darius
+Noxus
+Trifarian
+Energy
+5
+Power
+1
+Might
+5
+Description
+When you play your second card in a turn, give me +2 might this turn and ready me.

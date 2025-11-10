@@ -1,0 +1,14 @@
+Zhonya's Hourglass
+Gear
+Rare
+Calm
+Energy
+2
+Power
+0
+Might
+0
+Description
+HIDDEN (Hide now for [A] to react with later for 0.)
+If a friendly unit would die, kill this instead. Heal that unit,
+exhaust it, and recall it. (Send it to base. This isn't a move.)

@@ -1,0 +1,24 @@
+{
+  "name": "@riftbound/shared",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types and utilities for Riftbound TCG",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "echo 'ESLint configuration skipped for now'",
+    "test": "echo 'No tests yet for shared package'"
+  },
+  "keywords": [
+    "tcg",
+    "riftbound",
+    "types"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

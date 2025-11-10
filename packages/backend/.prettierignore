@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.js
+*.d.ts
+coverage/
+package-lock.json
+.env
+.env.local
+.env.production

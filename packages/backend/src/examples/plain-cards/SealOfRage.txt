@@ -1,0 +1,12 @@
+Seal of Rage
+Gear
+Epic
+Fury
+Energy
+0
+Power
+1
+Might
+0
+Description
+tap: REACTION - ADD fury. (Abilities that add resources can't be reacted to.)
