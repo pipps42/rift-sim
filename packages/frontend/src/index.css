@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  body {
+    @apply bg-slate-900 text-slate-100 antialiased;
+  }
+}
+
+/* Custom component classes for game UI */
+@layer components {
+  /* Card shadow effects */
+  .card-shadow {
+    @apply shadow-lg shadow-black/50;
+  }
+
+  .card-shadow-hover {
+    @apply hover:shadow-xl hover:shadow-black/70 transition-shadow duration-200;
+  }
+
+  /* Glow effects for special elements */
+  .glow-primary {
+    @apply shadow-lg shadow-primary-500/50;
+  }
+
+  .glow-fury {
+    @apply shadow-lg shadow-fury/50;
+  }
+
+  .glow-calm {
+    @apply shadow-lg shadow-calm/50;
+  }
+}

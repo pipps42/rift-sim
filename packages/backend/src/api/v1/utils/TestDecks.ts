@@ -13,14 +13,28 @@ export class TestDecks {
   static createBasicDeck(playerId: string, playerName: string): Deck {
     const deckId = uuidv4();
 
-    // Create main deck (40 cards minimum)
+    // Create main deck (40 cards: 39 units + 1 champion)
     const mainDeck: DeckCard[] = [];
-    for (let i = 0; i < 20; i++) {
+
+    // Add 38 basic units (19 pairs of different units)
+    for (let i = 0; i < 19; i++) {
       mainDeck.push({
-        cardId: `test-unit-${i % 10}`, // 10 different basic units, 2 copies each
+        cardId: `test-unit-${i % 10}`, // 10 different basic units, cycling through them
         quantity: 2,
       });
     }
+
+    // Add 1 more single unit to reach 39 units (38 + 1 = 39)
+    mainDeck.push({
+      cardId: `test-unit-9`,
+      quantity: 1,
+    });
+
+    // Add the chosen champion as the 40th card
+    mainDeck.push({
+      cardId: 'test-champion-1',
+      quantity: 1,
+    });
 
     // Create rune deck (exactly 12 cards)
     const runeDeck: DeckCard[] = [];

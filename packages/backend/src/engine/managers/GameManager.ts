@@ -15,6 +15,9 @@ import { SpendEnergyAction, SpendPowerAction, PlayCardAction, MoveUnitAction, Hi
 import type { ScanDelta, ActivatedAbilityInfo } from '../scanning/types/ScanTypes';
 import { TargetingSystem } from '../systems/TargetingSystem';
 import type { Target } from '@/types/game';
+import { PrismaClient } from '@/generated/prisma';
+import { createGameCard } from '@/utils/cardHelpers';
+import { CardFactory } from '@/data/CardFactory';
 
 /**
  * Central orchestrator for all Riftbound game operations
@@ -39,6 +42,13 @@ export class GameManager {
   // ⭐ NEW: Targeting system for validation and resolution
   private targetingSystem: TargetingSystem;
 
+  // ⭐ NEW: Database and card loading
+  private prisma: PrismaClient;
+  private cardFactory: CardFactory;
+
+  // ⭐ NEW: Store decks for setup phase
+  private gameDecks: Map<string, Deck[]> = new Map(); // Decks keyed by game ID
+
   constructor() {
     this.deckValidator = new DeckValidator();
     this.gameSetup = new GameSetup();
@@ -54,14 +64,71 @@ export class GameManager {
 
     // Initialize modifier registry (global for now, could be per-game)
     this.modifierRegistry = new ModifierRegistry();
+
+    // Initialize Prisma client
+    this.prisma = new PrismaClient();
+
+    // Initialize card factory
+    this.cardFactory = new CardFactory(this.prisma, this.cardScriptRuntime);
   }
 
   /**
-   * Initialize the runtime (load scripts)
+   * Initialize the runtime (load scripts and card factory)
    */
   async initialize(): Promise<void> {
     await this.cardScriptRuntime.initialize();
     logger.info('GameManager: CardScriptRuntime initialized');
+
+    await this.cardFactory.initialize();
+    logger.info('GameManager: CardFactory initialized');
+  }
+
+  /**
+   * ⭐ NEW: Load deck cards from database and populate player zones
+   *
+   * This converts a Deck (with DeckCard[] containing cardId + quantity)
+   * into GameCard instances that populate the player's mainDeck and runeDeck zones.
+   */
+  private async loadDeckCards(deck: Deck, player: Player): Promise<void> {
+    logger.debug(`GameManager: Loading deck cards for player ${player.name}`);
+
+    // Load main deck cards
+    for (const deckCard of deck.mainDeck) {
+      // Get card definition from factory (which has cached all cards)
+      const card = this.cardFactory.getCard(deckCard.cardId);
+
+      if (!card) {
+        logger.warn(`GameManager: Card ${deckCard.cardId} not found in factory, skipping`);
+        continue;
+      }
+
+      // Create GameCard instances for the specified quantity
+      for (let i = 0; i < deckCard.quantity; i++) {
+        const gameCard = createGameCard(card, player, 'mainDeck');
+        player.zones.mainDeck.push(gameCard);
+      }
+    }
+
+    // Load rune deck cards
+    for (const deckCard of deck.runeDeck) {
+      const card = this.cardFactory.getCard(deckCard.cardId);
+
+      if (!card) {
+        logger.warn(`GameManager: Rune card ${deckCard.cardId} not found in factory, skipping`);
+        continue;
+      }
+
+      // Create GameCard instances for the specified quantity
+      for (let i = 0; i < deckCard.quantity; i++) {
+        const gameCard = createGameCard(card, player, 'runeDeck');
+        player.zones.runeDeck.push(gameCard);
+      }
+    }
+
+    logger.info(
+      `GameManager: Loaded ${player.zones.mainDeck.length} cards to main deck ` +
+      `and ${player.zones.runeDeck.length} cards to rune deck for player ${player.name}`
+    );
   }
 
   /**
@@ -84,6 +151,10 @@ export class GameManager {
         throw new Error(`Deck ${i + 1} is invalid: ${validation.errors.join(', ')}`);
       }
     }
+
+    // ⭐ NEW: Load deck cards into player zones BEFORE creating game
+    await this.loadDeckCards(decks[0]!, players[0]!);
+    await this.loadDeckCards(decks[1]!, players[1]!);
 
     // Initialize card storage system
     const storage = new CardStorage();
@@ -117,6 +188,9 @@ export class GameManager {
 
     // Store game
     this.games.set(game.id, game);
+
+    // ⭐ NEW: Store decks for setup phase
+    this.gameDecks.set(game.id, decks);
 
     // ⭐ NEW: Create scanner for this game
     const scanner = new CardStateScanner(this.cardScriptRuntime, this.modifierRegistry, this.targetingSystem);
@@ -171,11 +245,20 @@ export class GameManager {
       throw new Error(`Cannot start game ${gameId}: game status is ${game.status}`);
     }
 
+    // Get decks for this game
+    const decks = this.gameDecks.get(gameId);
+    if (!decks) {
+      throw new Error(`Game ${gameId}: decks not found - game may have already been started`);
+    }
+
     logger.info(`GameManager: Starting game ${gameId}`);
 
     try {
-      // Perform game setup
-      await this.gameSetup.setupGame(game);
+      // Perform game setup (pass decks to extract chosen champion)
+      await this.gameSetup.setupGame(game, decks);
+
+      // Clean up decks from memory (no longer needed after setup)
+      this.gameDecks.delete(gameId);
 
       // Update game status
       game.status = GameStatus.IN_PROGRESS;
@@ -215,10 +298,11 @@ export class GameManager {
     // Emit game end event
     await eventBus.emit(GameEventFactory.createGameEndEvent(gameId, winnerId || '', reason));
 
-    // ⭐ Clean up scanner, executor, and turn manager
+    // ⭐ Clean up scanner, executor, turn manager, and decks
     this.scanners.delete(gameId);
     this.executors.delete(gameId);
     this.turnManagers.delete(gameId);
+    this.gameDecks.delete(gameId); // Clean up decks if game ended during setup
 
     // Clean up game after some time (placeholder for proper cleanup)
     setTimeout(() => {

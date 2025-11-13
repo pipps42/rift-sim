@@ -32,11 +32,20 @@ export class GameController {
 
   /**
    * Helper to validate and get userId from request
+   * TEMP: Creates guest user if no authentication
    */
-  private getUserId(req: Request): string {
+  private async getUserId(req: Request): Promise<string> {
     const userId = req.userId;
     if (!userId) {
-      throw new BadRequestError('User not authenticated');
+      // TEMP: Create guest user for testing without auth
+      const guestUser = await prisma.user.create({
+        data: {
+          username: `Guest_${Date.now()}`,
+          email: `guest_${Date.now()}@riftbound.local`,
+          passwordHash: '',
+        },
+      });
+      return guestUser.id;
     }
     return userId;
   }
@@ -52,7 +61,7 @@ export class GameController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const player1Id = this.getUserId(req);
+      const player1Id = await this.getUserId(req);
       const { player2Id } = req.body;
 
       // Get player 1 info from database
@@ -330,7 +339,7 @@ export class GameController {
   ): Promise<void> => {
     try {
       const gameId = this.getGameId(req);
-      const userId = this.getUserId(req);
+      const userId = await this.getUserId(req);
       const { cardInstanceId, targets } = req.body;
 
       if (!cardInstanceId) {
@@ -378,7 +387,7 @@ export class GameController {
   ): Promise<void> => {
     try {
       const gameId = this.getGameId(req);
-      const userId = this.getUserId(req);
+      const userId = await this.getUserId(req);
       const { unitInstanceId, toBattlefieldId } = req.body;
 
       if (!unitInstanceId || !toBattlefieldId) {
@@ -426,7 +435,7 @@ export class GameController {
   ): Promise<void> => {
     try {
       const gameId = this.getGameId(req);
-      const userId = this.getUserId(req);
+      const userId = await this.getUserId(req);
       const { cardInstanceId, abilityId, targets } = req.body;
 
       if (!cardInstanceId || !abilityId) {
@@ -474,7 +483,7 @@ export class GameController {
   ): Promise<void> => {
     try {
       const gameId = this.getGameId(req);
-      const userId = this.getUserId(req);
+      const userId = await this.getUserId(req);
 
       const result = await this.gameManager.passPriority(gameId, userId);
 
@@ -511,7 +520,7 @@ export class GameController {
   ): Promise<void> => {
     try {
       const gameId = this.getGameId(req);
-      const userId = this.getUserId(req);
+      const userId = await this.getUserId(req);
 
       const playableCards = this.gameManager.getPlayableCards(gameId, userId);
 
@@ -535,7 +544,7 @@ export class GameController {
   ): Promise<void> => {
     try {
       const gameId = this.getGameId(req);
-      const userId = this.getUserId(req);
+      const userId = await this.getUserId(req);
 
       const activatableCards = this.gameManager.getActivatableCards(gameId, userId);
 

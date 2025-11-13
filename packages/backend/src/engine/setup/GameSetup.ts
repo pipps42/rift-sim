@@ -1,6 +1,7 @@
 import {
   Game,
   Player,
+  Deck,
   GamePhase,
   TurnState,
   GameCard,
@@ -22,15 +23,15 @@ export class GameSetup {
   /**
    * Perform complete game setup
    */
-  async setupGame(game: Game): Promise<void> {
+  async setupGame(game: Game, decks: Deck[]): Promise<void> {
     logger.info(`GameSetup: Starting setup for game ${game.id}`);
 
     try {
       // 1. Place Champion Legends in Legend Zone
       await this.setupChampionLegends(game);
 
-      // 2. Place Chosen Champions in Champion Zone
-      await this.setupChosenChampions(game);
+      // 2. Place Chosen Champions in Champion Zone (extracted from main deck)
+      await this.setupChosenChampions(game, decks);
 
       // 3. Choose random battlefield for each player
       await this.setupBattlefields(game);
@@ -72,17 +73,44 @@ export class GameSetup {
 
   /**
    * Setup Chosen Champions in Champion Zone
+   * Extracts the chosen champion from the main deck and places it in the champion zone
    */
-  private async setupChosenChampions(game: Game): Promise<void> {
-    for (const player of game.players) {
-      if (player.chosenChampion) {
-        // Move Chosen Champion to Champion Zone
-        const championCard = createGameCard(player.chosenChampion, player, 'champion');
-        championCard.ready = true; // Champions start ready
+  private async setupChosenChampions(game: Game, decks: Deck[]): Promise<void> {
+    for (let i = 0; i < game.players.length; i++) {
+      const player = game.players[i];
+      const deck = decks[i];
 
-        player.zones.championZone.push(championCard);
-        logger.debug(`GameSetup: Placed ${player.chosenChampion.name} in Champion Zone for ${player.name}`);
+      if (!player || !deck) {
+        logger.warn(`GameSetup: Missing player or deck at index ${i}`);
+        continue;
       }
+
+      // Find the chosen champion in the main deck by cardId
+      const championIndex = player.zones.mainDeck.findIndex(
+        (card) => card.cardId === deck.chosenChampion
+      );
+
+      if (championIndex === -1) {
+        logger.warn(
+          `GameSetup: Chosen champion ${deck.chosenChampion} not found in ${player.name}'s main deck`
+        );
+        continue;
+      }
+
+      // Extract the champion from main deck
+      const championCard = player.zones.mainDeck.splice(championIndex, 1)[0]!;
+
+      // Update zone and ready status
+      championCard.zone = 'championZone';
+      championCard.ready = true; // Champions start ready
+
+      // Place in champion zone
+      player.zones.championZone.push(championCard);
+
+      logger.info(
+        `GameSetup: Extracted ${championCard.name} from main deck and placed in Champion Zone for ${player.name} ` +
+        `(main deck now has ${player.zones.mainDeck.length} cards)`
+      );
     }
   }
 
