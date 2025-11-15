@@ -1,115 +1,161 @@
-import { GameBoard, GameBoardProps } from '../components/composite/GameBoard';
+import { GameBoard } from '../components/composite/GameBoard';
+import type { GameBoardProps } from '../components/composite/GameBoard';
 import type { GamePhase } from '../components/game/PhaseIndicator';
+import { Domain } from '@riftbound/shared';
 
 /**
  * Example GameBoard with mock data for testing and development
  */
-export function GameBoardExample() {
+export function GameBoardExample({ showBackButton = false, onBack }: { showBackButton?: boolean; onBack?: () => void } = {}) {
   const mockGameBoardData: GameBoardProps = {
     // Current Player (bottom)
     player: {
       player: {
         name: 'Player 1',
         score: 4,
-        avatarUrl: 'https://via.placeholder.com/64',
+        avatarUrl: 'https://placehold.co/64',
         hasPriority: true,
       },
       handCards: [
         {
           instanceId: 'card-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Ahri, Nine-Tailed Fox',
           isPlayable: true,
-          isRevealed: true,
         },
         {
           instanceId: 'card-2',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Yasuo, The Unforgiven',
           isPlayable: false,
-          isRevealed: true,
         },
         {
           instanceId: 'card-3',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Lux, Lady of Luminosity',
           isPlayable: true,
-          isRevealed: true,
+        },
+        {
+          instanceId: 'card-4',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Ezreal, Prodigal Explorer',
+          isPlayable: true,
+        },
+        {
+          instanceId: 'card-5',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Miss Fortune, Bounty Hunter',
+          isPlayable: false,
+        },
+        {
+          instanceId: 'card-6',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Thresh, Chain Warden',
+          isPlayable: true,
+        },
+        {
+          instanceId: 'card-7',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Zed, Master of Shadows',
+          isPlayable: false,
         },
       ],
       mainDeckCount: 32,
       runeDeckCount: 8,
       runes: [
         {
-          id: 'rune-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'rune-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Fury Rune',
-          domain: 'FURY',
+          domain: Domain.FURY,
           ready: true,
         },
         {
-          id: 'rune-2',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'rune-2',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Calm Rune',
-          domain: 'CALM',
+          domain: Domain.CALM,
           ready: false,
         },
         {
-          id: 'rune-3',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'rune-3',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Mind Rune',
-          domain: 'MIND',
+          domain: Domain.MIND,
           ready: true,
         },
       ],
       runePool: {
         energy: 5,
         powerCosts: [
-          { domain: 'FURY', amount: 2 },
-          { domain: 'CALM', amount: 1 },
-          { domain: 'MIND', amount: 3 },
+          { domain: Domain.FURY, amount: 2 },
+          { domain: Domain.CALM, amount: 1 },
+          { domain: Domain.MIND, amount: 3 },
         ],
       },
       gears: [
         {
-          id: 'gear-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'gear-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Infinity Edge',
+        },
+        {
+          instanceId: 'gear-2',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Rabadon\'s Deathcap',
+        },
+        {
+          instanceId: 'gear-3',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Guardian Angel',
         },
       ],
       trashCards: [
         {
-          id: 'trash-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'trash-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Last Discarded Card',
         },
       ],
       baseUnits: [
         {
-          id: 'unit-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'unit-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Teemo',
           damage: 0,
           ready: true,
         },
         {
-          id: 'unit-2',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'unit-2',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Braum',
           damage: 2,
           ready: false,
         },
+        {
+          instanceId: 'unit-3',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Poppy',
+          damage: 0,
+          ready: true,
+        },
+        {
+          instanceId: 'unit-4',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Leona',
+          damage: 1,
+          ready: true,
+        },
       ],
       legend: {
-        id: 'legend-1',
-        imageUrl: 'https://via.placeholder.com/240x336',
+        instanceId: 'legend-1',
+        imageUrl: 'https://placehold.co/240x336',
         name: 'Demacia',
       },
       chosenChampion: {
-        id: 'champion-1',
-        imageUrl: 'https://via.placeholder.com/240x336',
+        instanceId: 'champion-1',
+        imageUrl: 'https://placehold.co/240x336',
         name: 'Garen',
-        isRevealed: true,
       },
     },
 
@@ -118,68 +164,95 @@ export function GameBoardExample() {
       player: {
         name: 'Opponent',
         score: 3,
-        avatarUrl: 'https://via.placeholder.com/64',
+        avatarUrl: 'https://placehold.co/64',
         hasPriority: false,
       },
       handCards: [
-        { instanceId: 'opp-1', imageUrl: '', name: '', isRevealed: false },
-        { instanceId: 'opp-2', imageUrl: '', name: '', isRevealed: false },
-        { instanceId: 'opp-3', imageUrl: '', name: '', isRevealed: false },
-        { instanceId: 'opp-4', imageUrl: '', name: '', isRevealed: false },
-        { instanceId: 'opp-5', imageUrl: '', name: '', isRevealed: false },
+        { instanceId: 'opp-1', imageUrl: '', name: '' },
+        { instanceId: 'opp-2', imageUrl: '', name: '' },
+        { instanceId: 'opp-3', imageUrl: '', name: '' },
+        { instanceId: 'opp-4', imageUrl: '', name: '' },
+        { instanceId: 'opp-5', imageUrl: '', name: '' },
+        { instanceId: 'opp-6', imageUrl: '', name: '' },
+        { instanceId: 'opp-7', imageUrl: '', name: '' },
+        { instanceId: 'opp-8', imageUrl: '', name: '' },
       ],
       mainDeckCount: 28,
       runeDeckCount: 6,
       runes: [
         {
-          id: 'opp-rune-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'opp-rune-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Body Rune',
-          domain: 'BODY',
+          domain: Domain.BODY,
           ready: true,
         },
         {
-          id: 'opp-rune-2',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'opp-rune-2',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Chaos Rune',
-          domain: 'CHAOS',
+          domain: Domain.CHAOS,
           ready: false,
         },
       ],
       runePool: {
         energy: 4,
         powerCosts: [
-          { domain: 'BODY', amount: 2 },
-          { domain: 'CHAOS', amount: 1 },
+          { domain: Domain.BODY, amount: 2 },
+          { domain: Domain.CHAOS, amount: 1 },
         ],
       },
-      gears: [],
+      gears: [
+        {
+          instanceId: 'opp-gear-1',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Black Cleaver',
+        },
+        {
+          instanceId: 'opp-gear-2',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Thornmail',
+        },
+      ],
       trashCards: [
         {
-          id: 'opp-trash-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'opp-trash-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Opponent Trash',
         },
       ],
       baseUnits: [
         {
-          id: 'opp-unit-1',
-          imageUrl: 'https://via.placeholder.com/240x336',
+          instanceId: 'opp-unit-1',
+          imageUrl: 'https://placehold.co/240x336',
           name: 'Darius',
           damage: 1,
           ready: true,
         },
+        {
+          instanceId: 'opp-unit-2',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Draven',
+          damage: 0,
+          ready: false,
+        },
+        {
+          instanceId: 'opp-unit-3',
+          imageUrl: 'https://placehold.co/240x336',
+          name: 'Swain',
+          damage: 3,
+          ready: true,
+        },
       ],
       legend: {
-        id: 'opp-legend-1',
-        imageUrl: 'https://via.placeholder.com/240x336',
+        instanceId: 'opp-legend-1',
+        imageUrl: 'https://placehold.co/240x336',
         name: 'Noxus',
       },
       chosenChampion: {
-        id: 'opp-champion-1',
-        imageUrl: 'https://via.placeholder.com/240x336',
+        instanceId: 'opp-champion-1',
+        imageUrl: 'https://placehold.co/240x336',
         name: 'Katarina',
-        isRevealed: true,
       },
     },
 
@@ -187,15 +260,14 @@ export function GameBoardExample() {
     battlefieldCenter: {
       battlefields: [
         {
-          battlefield: {
-            imageUrl: 'https://via.placeholder.com/384x224',
-            name: 'Summoner\'s Rift - Top Lane',
-            isContested: true,
-          },
+          id: 'battlefield-1',
+          imageUrl: 'https://placehold.co/384x224',
+          name: 'Summoner\'s Rift - Top Lane',
+          isContested: true,
           playerUnits: [
             {
-              id: 'bf1-p-unit-1',
-              imageUrl: 'https://via.placeholder.com/240x336',
+              instanceId: 'bf1-p-unit-1',
+              imageUrl: 'https://placehold.co/240x336',
               name: 'Fiora',
               damage: 0,
               ready: true,
@@ -205,8 +277,8 @@ export function GameBoardExample() {
           ],
           opponentUnits: [
             {
-              id: 'bf1-o-unit-1',
-              imageUrl: 'https://via.placeholder.com/240x336',
+              instanceId: 'bf1-o-unit-1',
+              imageUrl: 'https://placehold.co/240x336',
               name: 'Sett',
               damage: 3,
               ready: false,
@@ -215,23 +287,22 @@ export function GameBoardExample() {
           ],
         },
         {
-          battlefield: {
-            imageUrl: 'https://via.placeholder.com/384x224',
-            name: 'Summoner\'s Rift - Bot Lane',
-            isContested: false,
-          },
+          id: 'battlefield-2',
+          imageUrl: 'https://placehold.co/384x224',
+          name: 'Summoner\'s Rift - Bot Lane',
+          isContested: false,
           playerUnits: [
             {
-              id: 'bf2-p-unit-1',
-              imageUrl: 'https://via.placeholder.com/240x336',
+              instanceId: 'bf2-p-unit-1',
+              imageUrl: 'https://placehold.co/240x336',
               name: 'Jinx',
               damage: 0,
               ready: true,
               originalMight: 3,
             },
             {
-              id: 'bf2-p-unit-2',
-              imageUrl: 'https://via.placeholder.com/240x336',
+              instanceId: 'bf2-p-unit-2',
+              imageUrl: 'https://placehold.co/240x336',
               name: 'Lulu',
               damage: 0,
               ready: true,
@@ -258,14 +329,14 @@ export function GameBoardExample() {
       chainItems: [
         {
           id: 'chain-1',
-          cardImageUrl: 'https://via.placeholder.com/80x112',
+          cardImageUrl: 'https://placehold.co/80x112',
           cardName: 'Lightning Bolt',
           type: 'spell',
           controller: 'Player 1',
         },
         {
           id: 'chain-2',
-          cardImageUrl: 'https://via.placeholder.com/80x112',
+          cardImageUrl: 'https://placehold.co/80x112',
           cardName: 'Counter Spell',
           type: 'ability',
           controller: 'Opponent',
@@ -274,5 +345,30 @@ export function GameBoardExample() {
     },
   };
 
-  return <GameBoard {...mockGameBoardData} />;
+  return (
+    <>
+      {showBackButton && onBack && (
+        <button
+          onClick={onBack}
+          style={{
+            position: 'fixed',
+            top: '10px',
+            left: '10px',
+            zIndex: 1000,
+            padding: '8px 16px',
+            backgroundColor: '#646cff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold',
+          }}
+        >
+          ← Back to Menu
+        </button>
+      )}
+      <GameBoard {...mockGameBoardData} cardWidth={100} />
+    </>
+  );
 }

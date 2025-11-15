@@ -1,14 +1,9 @@
 import clsx from 'clsx';
 import { GameCard } from '../card/GameCard';
+import type { UICard } from '@/types';
 
-export interface BattlefieldUnit {
-  instanceId: string;
-  imageUrl: string;
-  name: string;
-  ready: boolean;
-  originalMight?: number;
-  modifiedMight?: number;
-}
+// Re-export UICard as BattlefieldUnit for backwards compatibility
+export type BattlefieldUnit = UICard;
 
 export interface BattlefieldUnitsProps {
   /**
@@ -63,18 +58,23 @@ export function BattlefieldUnits({
   return (
     <div
       className={clsx(
-        'flex justify-center',
-        needsOverlap ? '-space-x-8' : 'gap-2'
+        'flex justify-center h-full overflow-x-auto overflow-y-hidden',
+        needsOverlap ? '-space-x-8' : 'gap-1'
       )}
+      style={{ minHeight: 0 }}
     >
       {units.map((unit, index) => (
         <div
           key={unit.instanceId}
           className={clsx(
-            'transition-all duration-200',
+            'flex-shrink-0 transition-all duration-200',
             needsOverlap && 'hover:z-10'
           )}
-          style={needsOverlap ? { zIndex: index } : undefined}
+          style={{
+            height: '100%',
+            aspectRatio: '240/336',
+            zIndex: needsOverlap ? index : undefined,
+          }}
         >
           <GameCard
             imageUrl={unit.imageUrl}
@@ -83,7 +83,7 @@ export function BattlefieldUnits({
             originalMight={unit.originalMight}
             modifiedMight={unit.modifiedMight}
             size={size}
-            onClick={() => onUnitClick?.(unit.instanceId)}
+            onClick={() => unit.instanceId && onUnitClick?.(unit.instanceId)}
           />
         </div>
       ))}

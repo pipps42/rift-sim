@@ -1,6 +1,5 @@
 // Export all game types for use in backend and frontend
-export * from './types/game.js';
-export * from './types/actions.js';
-export * from './types/cardDefinitions.js';
-export * from './types/cardInstances.js';
+// NOTE: game.ts contains all core types needed by frontend
+// Other type files (actions, cardDefinitions, cardInstances) are for backend-specific use
 export * from './types/common.js';
+export * from './types/game.js';

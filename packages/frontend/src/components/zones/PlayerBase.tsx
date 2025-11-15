@@ -1,14 +1,9 @@
 import clsx from 'clsx';
 import { GameCard } from '../card/GameCard';
+import type { UICard } from '@/types';
 
-export interface BaseUnit {
-  instanceId: string;
-  imageUrl: string;
-  name: string;
-  ready: boolean;
-  originalMight?: number;
-  modifiedMight?: number;
-}
+// Re-export UICard as BaseUnit for backwards compatibility
+export type BaseUnit = UICard;
 
 export interface PlayerBaseProps {
   /**
@@ -48,31 +43,25 @@ export function PlayerBase({
 }: PlayerBaseProps) {
   if (units.length === 0) {
     return (
-      <div className="text-xs text-slate-400 italic p-3 border border-dashed border-slate-600 rounded">
+      <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 italic border border-dashed border-slate-600 rounded">
         No units in base
       </div>
     );
   }
 
-  const needsOverlap = units.length > maxInline;
-
   return (
     <div
-      className={clsx(
-        'flex flex-wrap gap-2 p-2',
-        'bg-slate-800/30 rounded border border-slate-700',
-        // Overlap if many units
-        needsOverlap && '-space-x-8'
-      )}
+      className="w-full h-full flex gap-1 p-1 bg-slate-800/30 rounded border border-slate-700 overflow-x-auto overflow-y-hidden"
+      style={{ minWidth: 0, minHeight: 0 }}
     >
-      {units.map((unit, index) => (
+      {units.map((unit) => (
         <div
           key={unit.instanceId}
-          className={clsx(
-            'transition-all duration-200',
-            needsOverlap && 'hover:z-10'
-          )}
-          style={needsOverlap ? { zIndex: index } : undefined}
+          className="flex-shrink-0"
+          style={{
+            height: '100%',
+            aspectRatio: '240/336',
+          }}
         >
           <GameCard
             imageUrl={unit.imageUrl}
@@ -81,7 +70,7 @@ export function PlayerBase({
             originalMight={unit.originalMight}
             modifiedMight={unit.modifiedMight}
             size={size}
-            onClick={() => onUnitClick?.(unit.instanceId)}
+            onClick={() => unit.instanceId && onUnitClick?.(unit.instanceId)}
           />
         </div>
       ))}

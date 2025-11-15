@@ -1,19 +1,10 @@
 import { Flex } from '../primitives/Flex';
 import { GameCard } from '../card/GameCard';
+import type { UICard } from '@/types';
 
-export interface LegendCard {
-  imageUrl: string;
-  name: string;
-}
-
-export interface ChampionCard {
-  imageUrl: string;
-  name: string;
-  /**
-   * Whether champion is still in zone (not played)
-   */
-  inZone: boolean;
-}
+// Re-export UICard with aliases for backwards compatibility
+export type LegendCard = UICard;
+export type ChampionCard = UICard;
 
 export interface LegendChampionZoneProps {
   /**

@@ -17,15 +17,17 @@ export interface CardBackProps {
   className?: string;
 }
 
+// Card sizes scale to fit container while maintaining aspect ratio
 const sizeClasses = {
-  mini: 'w-20 h-28',
-  normal: 'w-48 h-[16.8rem]',
-  large: 'w-64 h-[22.4rem]',
+  mini: 'w-full h-full',
+  normal: 'w-full h-full',
+  large: 'w-full h-full',
 };
 
 /**
  * CardBack - Static card back image
  * Used for decks, opponent hand, unrevealed cards
+ * Scales dynamically based on container size
  */
 export function CardBack({
   imageUrl = '/assets/card-back.webp',
@@ -38,7 +40,7 @@ export function CardBack({
       alt="Card back"
       loading="lazy"
       className={clsx(
-        'rounded-lg object-cover select-none',
+        'rounded-lg object-contain select-none',
         'card-shadow',
         sizeClasses[size],
         className

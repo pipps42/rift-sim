@@ -1,4 +1,4 @@
-import { ImgHTMLAttributes } from 'react';
+import type { ImgHTMLAttributes } from 'react';
 import clsx from 'clsx';
 
 export interface CardImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
@@ -36,10 +36,12 @@ export interface CardImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>
   className?: string;
 }
 
+// Card sizes scale to fit container while maintaining aspect ratio
+// Container must have defined dimensions
 const sizeClasses = {
-  mini: 'w-20 h-28', // ~80x112px (aspect 5:7)
-  normal: 'w-48 h-[16.8rem]', // ~192x269px (aspect 5:7)
-  large: 'w-64 h-[22.4rem]', // ~256x358px (aspect 5:7)
+  mini: 'w-full h-full',
+  normal: 'w-full h-full',
+  large: 'w-full h-full',
 };
 
 /**
@@ -68,9 +70,9 @@ export function CardImage({
       loading="lazy"
       className={clsx(
         // Base styles
-        'rounded-lg object-cover select-none',
+        'rounded-lg object-contain select-none',
         'transition-all duration-300',
-        // Size
+        // Size - fills container
         sizeClasses[size],
         // Exhausted state
         isExhausted && [

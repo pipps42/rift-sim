@@ -1,7 +1,5 @@
 import { Stack } from '../primitives/Stack';
-import { Hand } from '../zones/Hand';
 import { PlayerZones } from './PlayerZones';
-import { PlayerInfo } from '../zones/PlayerInfo';
 import type { HandCard } from '../zones/Hand';
 import type { Rune } from '../zones/RuneZone';
 import type { PowerCost } from '../zones/RunePool';
@@ -69,6 +67,11 @@ export interface PlayerAreaProps {
    */
   isOpponent?: boolean;
   /**
+   * Card width for fixed-width components (in pixels)
+   * @default 80
+   */
+  cardWidth?: number;
+  /**
    * Click handlers
    */
   onCardClick?: (cardId: string) => void;
@@ -85,11 +88,8 @@ export interface PlayerAreaProps {
  * PlayerArea - Complete area for one player
  *
  * Layout:
- * - Player Info (top)
- * - Hand (for current player bottom, opponent top)
- * - All zones (PlayerZones)
- *
- * Orientation flips for opponent (reversed order)
+ * For player: Hand → Decks+Rune → Gear+Champion → Base+Legend
+ * For opponent: Base+Legend → Gear+Champion → Decks+Rune → Hand (inverted)
  */
 export function PlayerArea({
   player,
@@ -104,6 +104,7 @@ export function PlayerArea({
   legend,
   chosenChampion,
   isOpponent = false,
+  cardWidth = 80,
   onCardClick,
   onDeckClick,
   onRuneDeckClick,
@@ -114,73 +115,29 @@ export function PlayerArea({
   onChampionClick,
 }: PlayerAreaProps) {
   return (
-    <Stack spacing={3} className="w-full">
-      {/* Player Info */}
-      <PlayerInfo
-        name={player.name}
-        score={player.score}
-        avatarUrl={player.avatarUrl}
-        hasPriority={player.hasPriority}
-        size="compact"
+    <div className="w-full h-full overflow-hidden">
+      <PlayerZones
+        handCards={handCards}
+        mainDeckCount={mainDeckCount}
+        runeDeckCount={runeDeckCount}
+        runes={runes}
+        runePool={runePool}
+        gears={gears}
+        trashCards={trashCards}
+        baseUnits={baseUnits}
+        legend={legend}
+        chosenChampion={chosenChampion}
+        isOpponent={isOpponent}
+        cardWidth={cardWidth}
+        onCardClick={onCardClick}
+        onDeckClick={onDeckClick}
+        onRuneDeckClick={onRuneDeckClick}
+        onTrashClick={onTrashClick}
+        onRuneClick={onRuneClick}
+        onGearClick={onGearClick}
+        onUnitClick={onUnitClick}
+        onChampionClick={onChampionClick}
       />
-
-      {/* For opponent: Hand at top, zones below */}
-      {/* For player: Zones at top, hand at bottom */}
-      {isOpponent ? (
-        <>
-          <Hand
-            cards={handCards}
-            isOpponent={true}
-            onCardClick={onCardClick}
-          />
-          <PlayerZones
-            mainDeckCount={mainDeckCount}
-            runeDeckCount={runeDeckCount}
-            runes={runes}
-            runePool={runePool}
-            gears={gears}
-            trashCards={trashCards}
-            baseUnits={baseUnits}
-            legend={legend}
-            chosenChampion={chosenChampion}
-            isOpponent={true}
-            onDeckClick={onDeckClick}
-            onRuneDeckClick={onRuneDeckClick}
-            onTrashClick={onTrashClick}
-            onRuneClick={onRuneClick}
-            onGearClick={onGearClick}
-            onUnitClick={onUnitClick}
-            onChampionClick={onChampionClick}
-          />
-        </>
-      ) : (
-        <>
-          <PlayerZones
-            mainDeckCount={mainDeckCount}
-            runeDeckCount={runeDeckCount}
-            runes={runes}
-            runePool={runePool}
-            gears={gears}
-            trashCards={trashCards}
-            baseUnits={baseUnits}
-            legend={legend}
-            chosenChampion={chosenChampion}
-            isOpponent={false}
-            onDeckClick={onDeckClick}
-            onRuneDeckClick={onRuneDeckClick}
-            onTrashClick={onTrashClick}
-            onRuneClick={onRuneClick}
-            onGearClick={onGearClick}
-            onUnitClick={onUnitClick}
-            onChampionClick={onChampionClick}
-          />
-          <Hand
-            cards={handCards}
-            isOpponent={false}
-            onCardClick={onCardClick}
-          />
-        </>
-      )}
-    </Stack>
+    </div>
   );
 }

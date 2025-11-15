@@ -1,11 +1,10 @@
 import clsx from 'clsx';
 import { CardImage } from '../card/CardImage';
 import { Badge } from '../primitives/Badge';
+import type { UICard } from '@/types';
 
-export interface TrashCard {
-  imageUrl: string;
-  name: string;
-}
+// Re-export UICard as TrashCard for backwards compatibility
+export type TrashCard = UICard;
 
 export interface TrashZoneProps {
   /**
@@ -37,16 +36,17 @@ export function TrashZone({ cards, onClick, size = 'normal' }: TrashZoneProps) {
   const lastCard = count > 0 ? cards[count - 1] : null;
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="w-full h-full flex flex-col items-center justify-center gap-1 overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
       {/* Label */}
-      <div className="text-xs font-semibold text-slate-300">Trash</div>
+      <div className="text-xs font-semibold text-slate-300 flex-shrink-0">Trash</div>
 
       {/* Trash */}
       <div
         className={clsx(
-          'relative',
+          'relative flex-1 flex items-center justify-center overflow-hidden',
           onClick && 'cursor-pointer hover:opacity-80 transition-opacity'
         )}
+        style={{ aspectRatio: '240/336', minWidth: 0, minHeight: 0, width: 'auto', maxWidth: '100%' }}
         onClick={onClick}
       >
         {lastCard ? (
@@ -58,8 +58,8 @@ export function TrashZone({ cards, onClick, size = 'normal' }: TrashZoneProps) {
             />
             {/* Count badge */}
             {count > 1 && (
-              <div className="absolute -top-2 -right-2">
-                <Badge variant="danger" size={size === 'mini' ? 'sm' : 'md'}>
+              <div className="absolute top-1 right-1">
+                <Badge variant="danger" size="sm">
                   {count}
                 </Badge>
               </div>
@@ -68,12 +68,7 @@ export function TrashZone({ cards, onClick, size = 'normal' }: TrashZoneProps) {
         ) : (
           // Empty trash
           <div
-            className={clsx(
-              'border-2 border-dashed border-slate-600 rounded-lg',
-              'flex items-center justify-center',
-              'bg-slate-800/30',
-              size === 'mini' ? 'w-20 h-28' : 'w-48 h-[16.8rem]'
-            )}
+            className="w-full h-full border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center bg-slate-800/30"
           >
             <span className="text-xs text-slate-500">Empty</span>
           </div>

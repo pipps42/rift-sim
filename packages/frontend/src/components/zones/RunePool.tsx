@@ -1,11 +1,9 @@
 import { Flex } from '../primitives/Flex';
 import { RunePoolIcon } from './RunePoolIcon';
-import type { Domain } from '@/utils/domainColors';
+import type { PowerCost } from '@riftbound/shared';
 
-export interface PowerCost {
-  domain: Domain;
-  amount: number;
-}
+// Re-export PowerCost from shared for backwards compatibility
+export type { PowerCost };
 
 export interface RunePoolProps {
   /**

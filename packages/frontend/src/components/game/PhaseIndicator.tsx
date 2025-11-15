@@ -1,15 +1,9 @@
 import { Badge } from '../primitives/Badge';
 import { Text } from '../primitives/Text';
+import { GamePhase } from '@riftbound/shared';
 
-export type GamePhase =
-  | 'AWAKEN'
-  | 'BEGINNING'
-  | 'CHANNEL'
-  | 'DRAW'
-  | 'ACTION'
-  | 'ENDING'
-  | 'EXPIRATION'
-  | 'CLEANUP';
+// Re-export GamePhase for backwards compatibility
+export type { GamePhase };
 
 export interface PhaseIndicatorProps {
   /**
@@ -24,14 +18,14 @@ export interface PhaseIndicatorProps {
 }
 
 const phaseLabels: Record<GamePhase, string> = {
-  AWAKEN: 'Awaken',
-  BEGINNING: 'Beginning',
-  CHANNEL: 'Channel',
-  DRAW: 'Draw',
-  ACTION: 'Action',
-  ENDING: 'Ending',
-  EXPIRATION: 'Expiration',
-  CLEANUP: 'Cleanup',
+  [GamePhase.AWAKEN]: 'Awaken',
+  [GamePhase.BEGINNING]: 'Beginning',
+  [GamePhase.CHANNEL]: 'Channel',
+  [GamePhase.DRAW]: 'Draw',
+  [GamePhase.ACTION]: 'Action',
+  [GamePhase.ENDING]: 'Ending',
+  [GamePhase.EXPIRATION]: 'Expiration',
+  [GamePhase.CLEANUP]: 'Cleanup',
 };
 
 /**

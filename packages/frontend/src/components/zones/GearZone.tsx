@@ -1,12 +1,8 @@
-import clsx from 'clsx';
 import { GameCard } from '../card/GameCard';
+import type { UICard } from '@/types';
 
-export interface GearCard {
-  instanceId: string;
-  imageUrl: string;
-  name: string;
-  ready: boolean;
-}
+// Re-export UICard as GearCard for backwards compatibility
+export type GearCard = UICard;
 
 export interface GearZoneProps {
   /**
@@ -48,7 +44,7 @@ export function GearZone({ gears, onGearClick, size = 'mini' }: GearZoneProps) {
           name={gear.name}
           isExhausted={!gear.ready}
           size={size}
-          onClick={() => onGearClick?.(gear.instanceId)}
+          onClick={() => gear.instanceId && onGearClick?.(gear.instanceId)}
         />
       ))}
     </div>

@@ -120,7 +120,7 @@ export const GameCard = memo(function GameCard({
   return (
     <div
       className={clsx(
-        'relative inline-block',
+        'relative w-full h-full',
         'transition-all duration-200',
         // Hover: magnify
         isHovered && !isExhausted && 'scale-110 z-20',

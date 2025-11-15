@@ -1,6 +1,4 @@
 import { BaseEntity } from './common';
-import type { CardStorage } from '../engine/storage/CardStorage';
-import type { HistoryQueryAPI } from '../engine/history/HistoryQueryAPI';
 
 // ============================================================================
 // CORE GAME ENTITIES
@@ -32,9 +30,9 @@ export interface Game {
   chain: ChainItem[];
   combatState?: CombatState;
   showdownState?: ShowdownState;
-  storage: CardStorage; // Card storage system for sharing data between cards
+  storage: any; // Card storage system for sharing data between cards (backend-specific)
   history: GameEvent[]; // Game event history for replay/queries
-  historyQuery: HistoryQueryAPI; // Helper API for common history queries
+  historyQuery: any; // Helper API for common history queries (backend-specific)
   processDeaths?: () => Promise<void>; // State-based action to process unit deaths
   createdAt: Date;
   updatedAt: Date;

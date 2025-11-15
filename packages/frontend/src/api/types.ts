@@ -2,8 +2,13 @@
  * API Type Definitions
  *
  * Type definitions for API requests and responses.
- * These mirror the backend API types.
+ * Imports core types from @riftbound/shared where applicable.
  */
+
+import type { PowerCost, Domain } from '@riftbound/shared';
+
+// Re-export imported types
+export type { PowerCost, Domain };
 
 // ============================================================================
 // Game Types
@@ -53,10 +58,7 @@ export interface RunePool {
   power: PowerCost[];
 }
 
-export interface PowerCost {
-  domain: string;
-  amount: number;
-}
+// PowerCost imported from shared - no need to redefine
 
 export interface Game {
   id: string;

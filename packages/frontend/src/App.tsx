@@ -50,6 +50,16 @@ function App() {
     }
   }
 
+  // If game-board view, render fullscreen without header
+  if (currentView === 'game-board') {
+    return (
+      <GameBoardExample
+        showBackButton={true}
+        onBack={() => setCurrentView('api-test')}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <h1>Riftbound TCG</h1>
@@ -76,9 +86,6 @@ function App() {
           API Test
         </button>
       </div>
-
-      {/* Game Board View */}
-      {currentView === 'game-board' && <GameBoardExample />}
 
       {/* API Test View */}
       {currentView === 'api-test' && (

@@ -42,14 +42,14 @@ export function BattlefieldCard({
         loading="lazy"
         className={clsx(
           // Base styles
-          'rounded-lg object-cover select-none',
+          'rounded-lg object-contain select-none',
           'card-shadow',
-          // Horizontal orientation - aspect ratio ~16:9
-          'w-96 h-56',
+          // Dynamic size - scales to container
+          'w-full h-full',
           // Contested state
           isContested && [
-            'ring-4 ring-yellow-400',
-            'shadow-2xl shadow-yellow-400/50',
+            'ring-2 ring-yellow-400',
+            'shadow-xl shadow-yellow-400/50',
             'animate-pulse',
           ]
         )}

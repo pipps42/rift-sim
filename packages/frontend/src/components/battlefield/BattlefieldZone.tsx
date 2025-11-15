@@ -51,29 +51,37 @@ export function BattlefieldZone({
   unitSize = 'mini',
 }: BattlefieldZoneProps) {
   return (
-    <Stack spacing={3} align="center" className="p-4 bg-slate-800/30 rounded-lg border border-slate-700">
+    <div className="w-full h-full flex flex-col p-2 bg-slate-800/30 rounded-lg border border-slate-700 gap-1" style={{ minHeight: 0, minWidth: 0 }}>
       {/* Opponent units (top) */}
-      <BattlefieldUnits
-        units={opponentUnits}
-        side="opponent"
-        onUnitClick={onUnitClick}
-        size={unitSize}
-      />
+      <div className="flex-1" style={{ minHeight: 0 }}>
+        <BattlefieldUnits
+          units={opponentUnits}
+          side="opponent"
+          onUnitClick={onUnitClick}
+          size={unitSize}
+        />
+      </div>
 
-      {/* Battlefield card (center) */}
-      <BattlefieldCard
-        imageUrl={battlefield.imageUrl}
-        name={battlefield.name}
-        isContested={battlefield.isContested}
-      />
+      {/* Battlefield card (center) - fixed aspect ratio landscape */}
+      <div className="flex-shrink-0 flex items-center justify-center" style={{ height: '80px' }}>
+        <div style={{ height: '100%', aspectRatio: '336/240' }}>
+          <BattlefieldCard
+            imageUrl={battlefield.imageUrl}
+            name={battlefield.name}
+            isContested={battlefield.isContested}
+          />
+        </div>
+      </div>
 
       {/* Player units (bottom) */}
-      <BattlefieldUnits
-        units={playerUnits}
-        side="player"
-        onUnitClick={onUnitClick}
-        size={unitSize}
-      />
-    </Stack>
+      <div className="flex-1" style={{ minHeight: 0 }}>
+        <BattlefieldUnits
+          units={playerUnits}
+          side="player"
+          onUnitClick={onUnitClick}
+          size={unitSize}
+        />
+      </div>
+    </div>
   );
 }

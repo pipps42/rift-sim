@@ -1,57 +1,105 @@
-import { Stack } from '../primitives/Stack';
-import { Container } from '../primitives/Container';
-import { PlayerArea, PlayerAreaProps } from './PlayerArea';
-import { BattlefieldCenter, BattlefieldCenterProps } from './BattlefieldCenter';
+import { PlayerArea } from './PlayerArea';
+import type { PlayerAreaProps } from './PlayerArea';
+import { BattlefieldCenter } from './BattlefieldCenter';
+import type { BattlefieldCenterProps } from './BattlefieldCenter';
 
 export interface GameBoardProps {
   /**
    * Current player data (bottom)
    */
-  player: Omit<PlayerAreaProps, 'isOpponent'>;
+  player: Omit<PlayerAreaProps, 'isOpponent' | 'cardWidth'>;
   /**
    * Opponent player data (top)
    */
-  opponent: Omit<PlayerAreaProps, 'isOpponent'>;
+  opponent: Omit<PlayerAreaProps, 'isOpponent' | 'cardWidth'>;
   /**
    * Battlefield center data
    */
   battlefieldCenter: BattlefieldCenterProps;
+  /**
+   * Card width for fixed-width components (in pixels)
+   * @default 80
+   */
+  cardWidth?: number;
 }
 
 /**
  * GameBoard - Complete game board layout
  *
- * Layout (top to bottom):
- * 1. Opponent PlayerArea (mirrored layout)
- * 2. BattlefieldCenter (2 battlefields + info panel + chain stack)
- * 3. Player PlayerArea (normal layout)
+ * Grid layout (9 rows total):
+ * - Opponent Area: 3 rows (Hand → Decks → Base+Legend+Champion)
+ * - Battlefield Center: 3 rows (Info + Battlefields + Stack)
+ * - Player Area: 3 rows (Base+Legend+Champion → Decks → Hand)
  *
- * This is the main game view component that assembles all zones
- * and game state into a complete playable interface.
+ * No scrolling anywhere - entire board fits on screen and adapts to window size.
+ * All content scales dynamically based on available space.
  */
 export function GameBoard({
   player,
   opponent,
   battlefieldCenter,
+  cardWidth = 80, // Deprecated
 }: GameBoardProps) {
   return (
-    <Container maxWidth="full" padding={true} className="min-h-screen bg-slate-900">
-      <Stack spacing={6} className="py-6">
-        {/* Opponent Area (top) */}
+    <div
+      className="bg-slate-900 overflow-hidden"
+      style={{
+        display: 'grid',
+        gridTemplateRows: 'repeat(9, 1fr)',
+        gap: '2px',
+        padding: '4px',
+        height: '100vh',
+        width: '100vw',
+        minHeight: 0,
+        minWidth: 0,
+      }}
+    >
+      {/* Opponent Area (top) - 3 rows */}
+      <div
+        className="border border-slate-700 rounded-lg bg-slate-800/50 overflow-hidden"
+        style={{
+          gridRow: 'span 3',
+          padding: '4px',
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
         <PlayerArea
           {...opponent}
           isOpponent={true}
+          cardWidth={cardWidth}
         />
+      </div>
 
-        {/* Battlefield Center (middle) */}
+      {/* Battlefield Center (middle) - 3 rows */}
+      <div
+        className="border border-slate-700 rounded-lg bg-slate-800/50 overflow-hidden"
+        style={{
+          gridRow: 'span 3',
+          padding: '4px',
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
         <BattlefieldCenter {...battlefieldCenter} />
+      </div>
 
-        {/* Player Area (bottom) */}
+      {/* Player Area (bottom) - 3 rows */}
+      <div
+        className="border border-slate-700 rounded-lg bg-slate-800/50 overflow-hidden"
+        style={{
+          gridRow: 'span 3',
+          padding: '4px',
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
         <PlayerArea
           {...player}
           isOpponent={false}
+          cardWidth={cardWidth}
         />
-      </Stack>
-    </Container>
+      </div>
+    </div>
   );
 }

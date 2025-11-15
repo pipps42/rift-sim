@@ -1,4 +1,5 @@
-import { Button, ButtonProps } from '../primitives/Button';
+import { Button } from '../primitives/Button';
+import type { ButtonProps } from '../primitives/Button';
 
 export type GameAction = 'play' | 'move' | 'activate' | 'pass';
 

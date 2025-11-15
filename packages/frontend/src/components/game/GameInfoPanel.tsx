@@ -1,6 +1,7 @@
 import { Stack } from '../primitives/Stack';
 import { ScoreDisplay } from './ScoreDisplay';
-import { PhaseIndicator, GamePhase } from './PhaseIndicator';
+import { PhaseIndicator } from './PhaseIndicator';
+import type { GamePhase } from './PhaseIndicator';
 import { TurnIndicator } from './TurnIndicator';
 import { RoundCounter } from './RoundCounter';
 import { PriorityIndicator } from './PriorityIndicator';

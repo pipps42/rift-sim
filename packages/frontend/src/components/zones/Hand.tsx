@@ -1,15 +1,10 @@
 import clsx from 'clsx';
 import { GameCard } from '../card/GameCard';
 import { CardBack } from '../card/CardBack';
+import type { UICard } from '@/types';
 
-export interface HandCard {
-  instanceId: string;
-  imageUrl: string;
-  name: string;
-  isPlayable?: boolean;
-  originalCost?: number;
-  modifiedCost?: number;
-}
+// Re-export UICard as HandCard for backwards compatibility
+export type HandCard = UICard;
 
 export interface HandProps {
   /**
@@ -55,26 +50,34 @@ export function Hand({
     );
   }
 
-  const needsScroll = cards.length > maxDisplay;
-
   return (
     <div
-      className={clsx(
-        'flex gap-2 p-2',
-        'bg-slate-800/50 rounded-lg border border-slate-700',
-        // Scrollable if too many cards
-        needsScroll && 'overflow-x-auto'
-      )}
+      className="w-full h-full flex gap-1 p-1 bg-slate-800/50 rounded-lg border border-slate-700 overflow-x-auto overflow-y-hidden"
+      style={{ minWidth: 0, minHeight: 0 }}
     >
       {cards.map((card) =>
         isOpponent ? (
-          // Opponent hand: show card backs
-          <div key={card.instanceId} className="flex-shrink-0">
+          // Opponent hand: show card backs - height 100%, width auto based on aspect ratio
+          <div
+            key={card.instanceId}
+            className="flex-shrink-0"
+            style={{
+              height: '100%',
+              aspectRatio: '240/336',
+            }}
+          >
             <CardBack size="normal" />
           </div>
         ) : (
-          // Player hand: show full cards
-          <div key={card.instanceId} className="flex-shrink-0">
+          // Player hand: show full cards - height 100%, width auto based on aspect ratio
+          <div
+            key={card.instanceId}
+            className="flex-shrink-0"
+            style={{
+              height: '100%',
+              aspectRatio: '240/336',
+            }}
+          >
             <GameCard
               imageUrl={card.imageUrl}
               name={card.name}
@@ -82,7 +85,7 @@ export function Hand({
               modifiedCost={card.modifiedCost}
               isPlayable={card.isPlayable}
               size="normal"
-              onClick={() => onCardClick?.(card.instanceId)}
+              onClick={() => card.instanceId && onCardClick?.(card.instanceId)}
             />
           </div>
         )

@@ -39,23 +39,24 @@ export function DeckZone({
   const label = type === 'main' ? 'Main Deck' : 'Rune Deck';
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="w-full h-full flex flex-col items-center justify-center gap-1 overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
       {/* Label */}
-      <div className="text-xs font-semibold text-slate-300">{label}</div>
+      <div className="text-xs font-semibold text-slate-300 flex-shrink-0">{label}</div>
 
       {/* Deck */}
       <div
         className={clsx(
-          'relative',
+          'relative flex-1 flex items-center justify-center overflow-hidden',
           onClick && 'cursor-pointer hover:opacity-80 transition-opacity'
         )}
+        style={{ aspectRatio: '240/336', minWidth: 0, minHeight: 0, width: 'auto', maxWidth: '100%' }}
         onClick={onClick}
       >
         <CardBack size={size} />
 
         {/* Count badge */}
-        <div className="absolute -top-2 -right-2">
-          <Badge variant="primary" size={size === 'mini' ? 'sm' : 'md'}>
+        <div className="absolute top-1 right-1">
+          <Badge variant="primary" size="sm">
             {count}
           </Badge>
         </div>
