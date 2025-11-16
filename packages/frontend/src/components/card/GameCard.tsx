@@ -1,9 +1,9 @@
-import { useState, memo } from 'react';
+import { useState, useRef, memo } from 'react';
 import clsx from 'clsx';
 import { CardImage } from './CardImage';
 import { CardOverlay } from './CardOverlay';
 import { CardBadge } from './CardBadge';
-import { CardTooltip } from './CardTooltip';
+import { CardPreviewTooltip } from './CardPreviewTooltip';
 import type { CardModification } from './CardTooltip';
 
 export interface GameCardProps {
@@ -111,14 +111,31 @@ export const GameCard = memo(function GameCard({
   className,
 }: GameCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [cardRect, setCardRect] = useState<DOMRect | undefined>(undefined);
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  const hasModifications =
-    modifications.length > 0 ||
-    (modifiedCost !== undefined && modifiedCost !== originalCost) ||
-    (modifiedMight !== undefined && modifiedMight !== originalMight);
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMousePosition({ x: e.clientX, y: e.clientY });
+
+    // Update card position
+    if (cardRef.current) {
+      setCardRect(cardRef.current.getBoundingClientRect());
+    }
+  };
+
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+
+    // Get initial card position
+    if (cardRef.current) {
+      setCardRect(cardRef.current.getBoundingClientRect());
+    }
+  };
 
   return (
     <div
+      ref={cardRef}
       className={clsx(
         'relative w-full h-full',
         'transition-all duration-200',
@@ -128,8 +145,9 @@ export const GameCard = memo(function GameCard({
         onClick && 'cursor-pointer',
         className
       )}
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setIsHovered(false)}
+      onMouseMove={handleMouseMove}
       onClick={onClick}
     >
       {/* Main card container with visual states */}
@@ -170,9 +188,17 @@ export const GameCard = memo(function GameCard({
         )}
       </div>
 
-      {/* Tooltip (shown on hover if modifications exist) */}
-      {isRevealed && hasModifications && (
-        <CardTooltip modifications={modifications} visible={isHovered} />
+      {/* Tooltip (always shown on hover) - rendered at root level */}
+      {isRevealed && isHovered && cardRect && mousePosition && (
+        <CardPreviewTooltip
+          imageUrl={imageUrl}
+          cardName={name}
+          isExhausted={isExhausted}
+          visible={isHovered}
+          mousePosition={mousePosition}
+          cardRect={cardRect}
+          modifications={modifications}
+        />
       )}
     </div>
   );

@@ -124,24 +124,13 @@ export function PlayerZones({
     ready: true,
   }))];
 
-  // Row 1: Hand (full width, scales dynamically)
-  const handRow = (
-    <div className="w-full h-full overflow-hidden">
-      <Hand
-        cards={handCards}
-        isOpponent={isOpponent}
-        onCardClick={onCardClick}
-      />
-    </div>
-  );
-
-  // Row 2: Rune Deck + Rune Zone + Main Deck + Trash (dynamic widths)
-  const decksRow = (
+  // Row 1: Rune Deck + Rune Zone + Hand + Main Deck + Trash
+  const topRow = (
     <div
       className="w-full h-full overflow-hidden"
       style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 6fr 1fr 1fr',
+        gridTemplateColumns: '1fr 3fr 8fr 1fr 1fr',
         gap: '4px',
         minWidth: 0,
         minHeight: 0,
@@ -171,6 +160,15 @@ export function PlayerZones({
         </div>
       </div>
 
+      {/* Hand - Expandable */}
+      <div className="overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
+        <Hand
+          cards={handCards}
+          isOpponent={isOpponent}
+          onCardClick={onCardClick}
+        />
+      </div>
+
       {/* Main Deck */}
       <div className="overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
         <DeckZone
@@ -188,7 +186,7 @@ export function PlayerZones({
     </div>
   );
 
-  // Row 3: Base + Legend + Champion (dynamic widths)
+  // Row 2: Base + Legend + Champion (dynamic widths)
   const baseRow = (
     <div
       className="w-full h-full overflow-hidden"
@@ -247,7 +245,7 @@ export function PlayerZones({
       className="w-full h-full overflow-hidden"
       style={{
         display: 'grid',
-        gridTemplateRows: 'repeat(3, 1fr)',
+        gridTemplateRows: 'repeat(2, 1fr)',
         gap: '2px',
         minWidth: 0,
         minHeight: 0,
@@ -255,17 +253,15 @@ export function PlayerZones({
     >
       {isOpponent ? (
         <>
-          {/* Opponent: Hand at top → Decks → Base */}
-          {handRow}
-          {decksRow}
+          {/* Opponent: Top row → Base */}
+          {topRow}
           {baseRow}
         </>
       ) : (
         <>
-          {/* Player: Base → Decks → Hand at bottom */}
+          {/* Player: Base → Top row */}
           {baseRow}
-          {decksRow}
-          {handRow}
+          {topRow}
         </>
       )}
     </div>

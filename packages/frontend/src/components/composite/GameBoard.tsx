@@ -26,10 +26,10 @@ export interface GameBoardProps {
 /**
  * GameBoard - Complete game board layout
  *
- * Grid layout (9 rows total):
- * - Opponent Area: 3 rows (Hand → Decks → Base+Legend+Champion)
+ * Grid layout (7 rows total):
+ * - Opponent Area: 2 rows (Rune Deck + Rune Zone + Hand + Main Deck + Trash | Base + Legend + Champion)
  * - Battlefield Center: 3 rows (Info + Battlefields + Stack)
- * - Player Area: 3 rows (Base+Legend+Champion → Decks → Hand)
+ * - Player Area: 2 rows (Base + Legend + Champion | Rune Deck + Rune Zone + Hand + Main Deck + Trash)
  *
  * No scrolling anywhere - entire board fits on screen and adapts to window size.
  * All content scales dynamically based on available space.
@@ -45,7 +45,7 @@ export function GameBoard({
       className="bg-slate-900 overflow-hidden"
       style={{
         display: 'grid',
-        gridTemplateRows: 'repeat(9, 1fr)',
+        gridTemplateRows: 'repeat(7, 1fr)',
         gap: '2px',
         padding: '4px',
         height: '100vh',
@@ -54,11 +54,11 @@ export function GameBoard({
         minWidth: 0,
       }}
     >
-      {/* Opponent Area (top) - 3 rows */}
+      {/* Opponent Area (top) - 2 rows */}
       <div
         className="border border-slate-700 rounded-lg bg-slate-800/50 overflow-hidden"
         style={{
-          gridRow: 'span 3',
+          gridRow: 'span 2',
           padding: '4px',
           minHeight: 0,
           minWidth: 0,
@@ -84,11 +84,11 @@ export function GameBoard({
         <BattlefieldCenter {...battlefieldCenter} />
       </div>
 
-      {/* Player Area (bottom) - 3 rows */}
+      {/* Player Area (bottom) - 2 rows */}
       <div
         className="border border-slate-700 rounded-lg bg-slate-800/50 overflow-hidden"
         style={{
-          gridRow: 'span 3',
+          gridRow: 'span 2',
           padding: '4px',
           minHeight: 0,
           minWidth: 0,
