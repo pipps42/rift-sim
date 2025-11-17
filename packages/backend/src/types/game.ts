@@ -59,6 +59,7 @@ export enum TurnState {
 }
 
 export enum GameStatus {
+  WAITING_FOR_PLAYERS = 'waiting_for_players',
   SETUP = 'setup',
   IN_PROGRESS = 'in_progress',
   FINISHED = 'finished',
@@ -645,6 +646,7 @@ export interface GameEvent {
 
 export enum EventType {
   GAME_START = 'game_start',
+  GAME_STATE_CHANGED = 'game_state_changed', // For SSE real-time updates
   TURN_START = 'turn_start',
   TURN_END = 'turn_end',
   PHASE_CHANGE = 'phase_change',

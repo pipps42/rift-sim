@@ -11,6 +11,7 @@ import { CardScriptRuntime } from '../scripting/CardScriptRuntime';
 import { ModifierRegistry } from '../actions/ModifierRegistry';
 import { ActionExecutor } from '../actions/ActionExecutor';
 import { TurnManager } from './TurnManager';
+import { RunePoolManager } from './RunePoolManager';
 import { SpendEnergyAction, SpendPowerAction, PlayCardAction, MoveUnitAction, HideCardAction } from '../actions/concrete';
 import type { ScanDelta, ActivatedAbilityInfo } from '../scanning/types/ScanTypes';
 import { TargetingSystem } from '../systems/TargetingSystem';
@@ -39,6 +40,9 @@ export class GameManager {
   // ⭐ NEW: Turn management - one turn manager per game
   private turnManagers: Map<string, TurnManager> = new Map(); // One turn manager per game
 
+  // ⭐ NEW: Rune pool management
+  private runePoolManager: RunePoolManager;
+
   // ⭐ NEW: Targeting system for validation and resolution
   private targetingSystem: TargetingSystem;
 
@@ -53,6 +57,7 @@ export class GameManager {
     this.deckValidator = new DeckValidator();
     this.gameSetup = new GameSetup();
     this.targetingSystem = new TargetingSystem();
+    this.runePoolManager = new RunePoolManager();
 
     // Initialize card script runtime
     this.cardScriptRuntime = new CardScriptRuntime({
@@ -89,7 +94,7 @@ export class GameManager {
    * This converts a Deck (with DeckCard[] containing cardId + quantity)
    * into GameCard instances that populate the player's mainDeck and runeDeck zones.
    */
-  private async loadDeckCards(deck: Deck, player: Player): Promise<void> {
+  async loadDeckCards(deck: Deck, player: Player): Promise<void> {
     logger.debug(`GameManager: Loading deck cards for player ${player.name}`);
 
     // Load main deck cards
@@ -241,7 +246,8 @@ export class GameManager {
       throw new Error(`Game ${gameId} not found`);
     }
 
-    if (game.status !== GameStatus.SETUP) {
+    // Allow starting from SETUP (classic flow) or WAITING_FOR_PLAYERS (lobby flow)
+    if (game.status !== GameStatus.SETUP && game.status !== GameStatus.WAITING_FOR_PLAYERS) {
       throw new Error(`Cannot start game ${gameId}: game status is ${game.status}`);
     }
 
@@ -256,6 +262,13 @@ export class GameManager {
     try {
       // Perform game setup (pass decks to extract chosen champion)
       await this.gameSetup.setupGame(game, decks);
+
+      // Channel initial runes for the first player (2 runes)
+      const firstPlayer = game.players[game.currentPlayerIndex];
+      if (firstPlayer) {
+        await this.runePoolManager.channelRunes(game, firstPlayer.id, 2);
+        logger.info(`GameManager: Channeled 2 initial runes for ${firstPlayer.name}`);
+      }
 
       // Clean up decks from memory (no longer needed after setup)
       this.gameDecks.delete(gameId);
@@ -319,11 +332,30 @@ export class GameManager {
   }
 
   /**
-   * Get all active games
+   * Update the deck for a specific player in a game (used when replacing placeholder)
+   * @param gameId The game ID
+   * @param playerIndex The player index (0 or 1)
+   * @param newDeck The new deck to use
+   */
+  updatePlayerDeck(gameId: string, playerIndex: number, newDeck: Deck): void {
+    const decks = this.gameDecks.get(gameId);
+    if (!decks) {
+      throw new Error(`Game ${gameId}: decks not found`);
+    }
+
+    if (playerIndex < 0 || playerIndex >= decks.length) {
+      throw new Error(`Invalid player index ${playerIndex}`);
+    }
+
+    decks[playerIndex] = newDeck;
+  }
+
+  /**
+   * Get all active games (including lobbies waiting for players)
    */
   getActiveGames(): Game[] {
     return Array.from(this.games.values()).filter(
-      game => game.status === GameStatus.IN_PROGRESS
+      game => game.status === GameStatus.IN_PROGRESS || game.status === GameStatus.WAITING_FOR_PLAYERS
     );
   }
 

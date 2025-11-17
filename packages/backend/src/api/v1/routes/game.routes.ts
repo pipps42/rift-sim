@@ -23,9 +23,21 @@ export function createGameRoutes(gameManager: GameManager): Router {
 
   /**
    * POST /api/v1/games
-   * Create a new game vs AI
+   * Create a new game lobby (waiting for player 2)
    */
   router.post('/', controller.createGame);
+
+  /**
+   * POST /api/v1/games/:gameId/join
+   * Join an existing game lobby as player 2
+   */
+  router.post('/:gameId/join', controller.joinGame);
+
+  /**
+   * GET /api/v1/games/:gameId/events
+   * Server-Sent Events stream for real-time game state updates
+   */
+  router.get('/:gameId/events', controller.streamGameEvents);
 
   /**
    * GET /api/v1/games/:gameId

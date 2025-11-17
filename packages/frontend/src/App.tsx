@@ -3,11 +3,14 @@ import './App.css'
 import { createGame, listGames, ApiError } from './api'
 import type { Game } from './api/types'
 import { GameBoardExample } from './examples/GameBoardExample'
+import { LobbyView } from './views/LobbyView'
+import { GameView } from './views/GameView'
 
-type View = 'api-test' | 'game-board';
+type View = 'lobby' | 'game' | 'api-test' | 'game-board';
 
 function App() {
-  const [currentView, setCurrentView] = useState<View>('game-board');
+  const [currentView, setCurrentView] = useState<View>('lobby');
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
   const [games, setGames] = useState<Game[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,12 +53,34 @@ function App() {
     }
   }
 
-  // If game-board view, render fullscreen without header
+  // Handle game joined from lobby
+  const handleGameJoined = (gameId: string) => {
+    setCurrentGameId(gameId);
+    setCurrentView('game');
+  };
+
+  // Handle leave game
+  const handleLeaveGame = () => {
+    setCurrentGameId(null);
+    setCurrentView('lobby');
+  };
+
+  // Lobby view (default)
+  if (currentView === 'lobby') {
+    return <LobbyView onGameJoined={handleGameJoined} />;
+  }
+
+  // Active game view
+  if (currentView === 'game' && currentGameId) {
+    return <GameView gameId={currentGameId} onLeave={handleLeaveGame} />;
+  }
+
+  // GameBoard example (demo)
   if (currentView === 'game-board') {
     return (
       <GameBoardExample
         showBackButton={true}
-        onBack={() => setCurrentView('api-test')}
+        onBack={() => setCurrentView('lobby')}
       />
     );
   }
@@ -68,13 +93,22 @@ function App() {
       {/* View Switcher */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', justifyContent: 'center' }}>
         <button
+          onClick={() => setCurrentView('lobby')}
+          style={{
+            fontWeight: currentView === 'lobby' ? 'bold' : 'normal',
+            backgroundColor: currentView === 'lobby' ? '#646cff' : '#1a1a1a',
+          }}
+        >
+          Multiplayer Lobby
+        </button>
+        <button
           onClick={() => setCurrentView('game-board')}
           style={{
             fontWeight: currentView === 'game-board' ? 'bold' : 'normal',
             backgroundColor: currentView === 'game-board' ? '#646cff' : '#1a1a1a',
           }}
         >
-          Game Board
+          UI Demo
         </button>
         <button
           onClick={() => setCurrentView('api-test')}
